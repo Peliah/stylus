@@ -1,5 +1,5 @@
 import { Worker, Job } from 'bullmq';
-import { getRedisConnection } from './redis';
+import { getBullMqConnection } from './redis';
 import { prisma } from './prisma';
 import { analyzeIncomingMessage } from './openai';
 import { sendMessage } from './openwa';
@@ -112,7 +112,7 @@ export const messageWorker = new Worker(
       }
 
       const vendorNotificationText = 
-        `🤖 *New Message from ${customer.name || customerPhoneNumber}*\n` +
+        `*New Message from ${customer.name || customerPhoneNumber}*\n` +
         `"${content}"\n\n` +
         `*Suggested Reply:*\n` +
         `"${aiResult.proposedReply}"\n` +
@@ -133,7 +133,7 @@ export const messageWorker = new Worker(
     }
   },
   {
-    connection: getRedisConnection(),
+    connection: getBullMqConnection(),
     concurrency: 1, // Process one message at a time to prevent database race conditions
   }
 );

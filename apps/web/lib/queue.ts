@@ -1,11 +1,10 @@
 import { Queue } from 'bullmq';
-import { getRedisConnection } from './redis';
+import { getBullMqConnection } from './redis';
 
 export const QUEUE_NAME = 'message-processing';
 
-// Initialize the BullMQ queue with a shared Redis connection
 export const messageQueue = new Queue(QUEUE_NAME, {
-  connection: getRedisConnection(),
+  connection: getBullMqConnection(),
 });
 
 export const addMessageJob = async (data: {
