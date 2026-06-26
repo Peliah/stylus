@@ -124,7 +124,10 @@ export const messageWorker = new Worker(
         `• *edit [custom text]* to send a modified message`;
 
       // 8. Forward draft options to Vendor's WhatsApp
-      await sendMessage(vendorPhoneNumber, vendorNotificationText);
+      const result = await sendMessage(vendorPhoneNumber, vendorNotificationText);
+      if (result.queued) {
+        console.log('[Worker] Gateway down — vendor notification queued for retry.');
+      }
       console.log(`[Worker] Draft suggestion forwarded to vendor for approval.`);
 
     } catch (error) {

@@ -18,6 +18,9 @@ export async function register() {
     await import('./lib/worker');
     console.log('[Startup] Background BullMQ worker initialized.');
 
+    await import('./lib/outbound-queue');
+    console.log('[Startup] Outbound message retry worker initialized.');
+
     const { startHealthCheck } = await import('./lib/health');
     startHealthCheck();
   }
