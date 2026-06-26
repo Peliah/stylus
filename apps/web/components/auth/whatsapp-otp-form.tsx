@@ -62,7 +62,7 @@ export function WhatsAppOtpForm({ intent }: WhatsAppOtpFormProps) {
         return
       }
 
-      window.location.href = "/dashboard"
+      window.location.href = intent === "signup" ? "/onboarding" : "/dashboard"
     } catch {
       setError("Verification failed. Try again.")
     } finally {

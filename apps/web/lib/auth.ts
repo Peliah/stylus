@@ -38,6 +38,7 @@ export const authOptions: NextAuthOptions = {
             data: {
               name: shopName,
               phoneNumber: phone,
+              onboardingComplete: false,
             },
           });
         }

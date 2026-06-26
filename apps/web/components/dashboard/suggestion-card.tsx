@@ -5,7 +5,7 @@ import {
   approveSendAction,
   approveWithEditAction,
   rejectSuggestionAction,
-} from "@/app/(dashboard)/dashboard/suggestions/actions"
+} from "@/app/(dashboard)/(main)/dashboard/suggestions/actions"
 
 interface SuggestionCardProps {
   suggestion: {

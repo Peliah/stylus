@@ -9,11 +9,11 @@ import {
   approveWithCustomReply,
   rejectSuggestion,
 } from '../../../lib/suggestion-actions';
-import { getOrCreateDefaultVendor, VENDOR_PHONE_NUMBER } from './db';
+import { resolveWebhookVendor } from './db';
 
 export async function handleVendorCommand(commandText: string) {
   const trimmed = commandText.trim();
-  const vendor = await getOrCreateDefaultVendor();
+  const vendor = await resolveWebhookVendor();
 
   const suggestion = await prisma.suggestion.findFirst({
     where: { vendorId: vendor.id, status: 'PENDING' },
@@ -21,27 +21,27 @@ export async function handleVendorCommand(commandText: string) {
   });
 
   if (!suggestion) {
-    await sendMessage(VENDOR_PHONE_NUMBER, 'No pending suggestions found to approve.');
+    await sendMessage(vendor.phoneNumber, 'No pending suggestions found to approve.');
     return;
   }
 
   try {
     if (trimmed === '1') {
       await approveAndSendSuggestion(suggestion.id);
-      await sendMessage(VENDOR_PHONE_NUMBER, 'Suggestion approved and reply dispatched.');
+      await sendMessage(vendor.phoneNumber, 'Suggestion approved and reply dispatched.');
     } else if (trimmed === '2') {
       await approveActionsOnly(suggestion.id);
-      await sendMessage(VENDOR_PHONE_NUMBER, 'CRM database action updated (no reply sent).');
+      await sendMessage(vendor.phoneNumber, 'CRM database action updated (no reply sent).');
     } else if (trimmed === '3') {
       await rejectSuggestion(suggestion.id);
-      await sendMessage(VENDOR_PHONE_NUMBER, 'Suggestion rejected.');
+      await sendMessage(vendor.phoneNumber, 'Suggestion rejected.');
     } else if (trimmed.toLowerCase().startsWith('edit ')) {
       const customReply = trimmed.substring(5).trim();
       await approveWithCustomReply(suggestion.id, customReply);
-      await sendMessage(VENDOR_PHONE_NUMBER, 'Custom reply dispatched and actions executed.');
+      await sendMessage(vendor.phoneNumber, 'Custom reply dispatched and actions executed.');
     } else {
       await sendMessage(
-        VENDOR_PHONE_NUMBER,
+        vendor.phoneNumber,
         'Invalid command. Reply with:\n' +
           '• *1* to Approve and Send suggested reply\n' +
           '• *2* to Approve Action only (no reply)\n' +
@@ -51,6 +51,6 @@ export async function handleVendorCommand(commandText: string) {
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    await sendMessage(VENDOR_PHONE_NUMBER, `Failed to process command: ${message}`);
+    await sendMessage(vendor.phoneNumber, `Failed to process command: ${message}`);
   }
 }

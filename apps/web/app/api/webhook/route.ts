@@ -12,9 +12,10 @@ import { prisma } from '../../../lib/prisma';
 import { addMessageJob } from '../../../lib/queue';
 import { sendMessage } from '../../../lib/openwa';
 import { verifyWebhookSignature } from './verify';
-import { getOrCreateDefaultVendor, VENDOR_PHONE_NUMBER } from './db';
+import { resolveWebhookVendor } from './db';
 import { handleVendorCommand } from './commands';
 import { getIgnoredMessageReason, isMediaMessage } from './message-utils';
+import { phoneDigitsMatch } from '../../../lib/phone';
 
 export async function POST(req: NextRequest) {
   try {
@@ -49,17 +50,15 @@ export async function POST(req: NextRequest) {
 
     const isMedia = isMediaMessage(data);
 
-    const cleanFrom = from.split('@')[0];
-    const cleanVendor = VENDOR_PHONE_NUMBER.split('@')[0];
-    const isFromVendor = cleanFrom === cleanVendor;
+    const vendor = await resolveWebhookVendor();
+    const isFromVendor = phoneDigitsMatch(vendor.phoneNumber, from);
 
     if (isFromVendor) {
       console.log(`[Webhook] Received vendor command: "${messageContent}"`);
       await handleVendorCommand(messageContent);
     } else {
       console.log(`[Webhook] Received customer message from ${from}: "${messageContent}"`);
-      
-      const vendor = await getOrCreateDefaultVendor();
+
       const customer = await prisma.customer.upsert({
         where: {
           vendorId_phoneNumber: {
@@ -86,7 +85,7 @@ export async function POST(req: NextRequest) {
 
       if (isMedia) {
         await sendMessage(
-          VENDOR_PHONE_NUMBER,
+          vendor.phoneNumber,
           `Customer ${customer.name || from} sent media (${type}). Flagged for manual review.`
         );
         return NextResponse.json({ received: true, status: 'media_flagged' });
@@ -95,7 +94,7 @@ export async function POST(req: NextRequest) {
       await addMessageJob({
         messageId,
         customerPhoneNumber: from,
-        vendorPhoneNumber: VENDOR_PHONE_NUMBER,
+        vendorPhoneNumber: vendor.phoneNumber,
         content: messageContent,
         isMedia,
       });

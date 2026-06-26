@@ -21,11 +21,14 @@ enum SuggestionStatus {
 }
 
 model Vendor {
-  id           String       @id @default(uuid())
-  name         String
-  phoneNumber  String       @unique // Vendor's WhatsApp number (e.g. "1234567890@c.us")
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  id                 String       @id @default(uuid())
+  name               String
+  phoneNumber        String       @unique // Vendor's WhatsApp number (e.g. "1234567890@c.us")
+  onboardingComplete Boolean      @default(false)
+  openwaSessionId    String?      @unique
+  whatsappLinkedAt   DateTime?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
   customers    Customer[]
   products     Product[]
   orders       Order[]
