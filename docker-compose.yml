@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  # 1. PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: crm-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: crm_user
+      POSTGRES_PASSWORD: crm_password
+      POSTGRES_DB: crm_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # 2. Redis for BullMQ Queue
+  redis:
+    image: redis:7-alpine
+    container_name: crm-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  # 3. OpenWA WhatsApp API Gateway
+  openwa:
+    image: ghcr.io/rmyndharis/openwa:latest
+    container_name: crm-openwa
+    restart: always
+    ports:
+      - "2785:2785"
+    environment:
+      - API_KEY=openwa_secure_token
+      - DB_TYPE=sqlite
+      - PORT=2785
+    volumes:
+      - openwa_sessions:/app/sessions
+    depends_on:
+      - redis
+
+volumes:
+  postgres_data:
+  redis_data:
+  openwa_sessions:

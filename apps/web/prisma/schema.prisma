@@ -1,0 +1,111 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum OrderStatus {
+  DRAFT
+  PENDING
+  PAID
+  SHIPPED
+  CANCELLED
+}
+
+enum SuggestionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Vendor {
+  id           String       @id @default(uuid())
+  name         String
+  phoneNumber  String       @unique // Vendor's WhatsApp number (e.g. "1234567890@c.us")
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  customers    Customer[]
+  products     Product[]
+  orders       Order[]
+  suggestions  Suggestion[]
+}
+
+model Customer {
+  id           String       @id @default(uuid())
+  vendorId     String
+  vendor       Vendor       @relation(fields: [vendorId], references: [id])
+  phoneNumber  String       // Customer's WhatsApp number
+  name         String?
+  notes        String?
+  loyaltyClass String       @default("Regular")
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  orders       Order[]
+  messages     Message[]
+
+  @@unique([vendorId, phoneNumber])
+}
+
+model Product {
+  id          String       @id @default(uuid())
+  vendorId    String
+  vendor      Vendor       @relation(fields: [vendorId], references: [id])
+  name        String
+  sku         String?
+  price       Float
+  stock       Int          @default(0)
+  description String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  orderItems  OrderItem[]
+
+  @@unique([vendorId, name])
+  @@unique([vendorId, sku])
+}
+
+model Order {
+  id          String       @id @default(uuid())
+  vendorId    String
+  vendor      Vendor       @relation(fields: [vendorId], references: [id])
+  customerId  String
+  customer    Customer     @relation(fields: [customerId], references: [id])
+  status      OrderStatus  @default(DRAFT)
+  totalPrice  Float        @default(0.0)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  items       OrderItem[]
+}
+
+model OrderItem {
+  id        String   @id @default(uuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  quantity  Int
+  price     Float
+}
+
+model Message {
+  id          String   @id @default(uuid())
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id])
+  content     String
+  sender      String   // "CUSTOMER" or "VENDOR"
+  isMedia     Boolean  @default(false)
+  timestamp   DateTime @default(now())
+}
+
+model Suggestion {
+  id                  String           @id @default(uuid())
+  vendorId            String
+  vendor              Vendor           @relation(fields: [vendorId], references: [id])
+  customerPhoneNumber String
+  proposedReply       String
+  proposedActions     Json             // e.g. { type: "CREATE_ORDER", items: [{ sku: "x", qty: 2 }] }
+  status              SuggestionStatus @default(PENDING)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+}
