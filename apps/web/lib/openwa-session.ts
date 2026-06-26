@@ -27,26 +27,59 @@ export function getDefaultSessionId(): string {
   return DEFAULT_SESSION_ID;
 }
 
-export async function ensureOpenwaSession(
-  sessionId: string,
-  name: string
-): Promise<void> {
-  const existing = await openwaSessionFetch(sessionId, '', { method: 'GET' });
-  if (existing.ok) return;
+/** OpenWA session names: letters, numbers, and hyphens only. */
+export function sanitizeOpenwaSessionName(name: string): string {
+  const sanitized = name
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 64);
+  return sanitized || 'stylus-session';
+}
 
+/**
+ * Ensures an OpenWA session exists. Returns the session id (existing or newly created).
+ * OpenWA assigns ids on create — we cannot pass a custom id in the POST body.
+ */
+export async function ensureOpenwaSession(
+  sessionId: string | null | undefined,
+  name: string
+): Promise<string> {
+  if (sessionId) {
+    const existing = await openwaSessionFetch(sessionId, '', { method: 'GET' });
+    if (existing.ok) return sessionId;
+  }
+
+  const sessionName = sanitizeOpenwaSessionName(name);
   const response = await fetch(`${OPENWA_API_URL}/api/sessions`, {
     method: 'POST',
     headers: {
       'X-API-Key': OPENWA_API_KEY,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ id: sessionId, name }),
+    body: JSON.stringify({ name: sessionName }),
   });
 
-  if (!response.ok && response.status !== 409) {
+  if (response.status === 409) {
+    const listRes = await fetch(`${OPENWA_API_URL}/api/sessions`, {
+      headers: { 'X-API-Key': OPENWA_API_KEY },
+    });
+    if (listRes.ok) {
+      const sessions = (await listRes.json()) as Array<{ id: string; name: string }>;
+      const match = sessions.find((s) => s.name === sessionName);
+      if (match) return match.id;
+    }
+  }
+
+  if (!response.ok) {
     const text = await response.text();
     throw new Error(`Failed to create OpenWA session: ${text}`);
   }
+
+  const data = (await response.json()) as { id: string };
+  return data.id;
 }
 
 export async function startOpenwaSession(sessionId: string): Promise<void> {
@@ -72,12 +105,14 @@ export async function getOpenwaSessionQr(sessionId: string): Promise<SessionQrRe
   const response = await openwaSessionFetch(sessionId, '/qr', { method: 'GET' });
   const data = (await response.json()) as {
     qr?: string;
+    qrCode?: string;
     message?: string;
     status?: string;
   };
 
-  if (response.ok && data.qr) {
-    return { qr: data.qr, status: snapshot.rawStatus };
+  const qrImage = data.qr ?? data.qrCode ?? null;
+  if (response.ok && qrImage) {
+    return { qr: qrImage, status: snapshot.rawStatus };
   }
 
   return {

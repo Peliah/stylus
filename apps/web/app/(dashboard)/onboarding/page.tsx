@@ -1,20 +1,27 @@
 import { redirect } from "next/navigation"
-import { OnboardingWizard } from "@/components/onboarding/onboarding-wizard"
-import { getOnboardingStatus } from "@/lib/onboarding"
+import { CatalogOnboardingWizard } from "@/components/onboarding/catalog-onboarding-wizard"
 import { getActiveVendor } from "@/lib/vendor"
+import { prisma } from "@/lib/prisma"
 
 export const metadata = {
   title: "Setup — Stylus",
-  description: "Connect WhatsApp and set up your shop.",
+  description: "Add products to your shop catalog.",
 }
 
 export default async function OnboardingPage() {
   const vendor = await getActiveVendor()
+
   if (vendor.onboardingComplete) {
     redirect("/dashboard")
   }
 
-  const status = await getOnboardingStatus(vendor.id)
+  if (!vendor.whatsappLinkedAt) {
+    redirect("/get-started")
+  }
 
-  return <OnboardingWizard initial={JSON.parse(JSON.stringify(status))} />
+  const productCount = await prisma.product.count({ where: { vendorId: vendor.id } })
+
+  return (
+    <CatalogOnboardingWizard productCount={productCount} shopName={vendor.name} />
+  )
 }

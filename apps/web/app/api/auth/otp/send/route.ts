@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import { sendLoginOtp } from '@/lib/auth-otp';
 import { prisma } from '@/lib/prisma';
-import { normalizeWhatsAppPhone } from '@/lib/phone';
+import { normalizeWhatsAppPhone, whatsAppPhoneVariants } from '@/lib/phone';
+import { getVendorWhatsAppStatus } from '@/lib/whatsapp-connection';
+import { toVendorError } from '@/lib/vendor-errors';
 
 export async function POST(req: Request) {
   try {
@@ -17,33 +19,42 @@ export async function POST(req: Request) {
     const phone = normalizeWhatsAppPhone(body.phone);
     const intent = body.intent ?? 'login';
 
-    if (intent === 'login') {
-      const vendor = await prisma.vendor.findUnique({ where: { phoneNumber: phone } });
-      if (!vendor) {
-        return NextResponse.json(
-          { error: 'No shop found for this number. Create an account first.' },
-          { status: 404 }
-        );
-      }
-    } else {
-      const existing = await prisma.vendor.findUnique({ where: { phoneNumber: phone } });
-      if (existing) {
-        return NextResponse.json(
-          { error: 'This number already has a shop. Log in instead.' },
-          { status: 409 }
-        );
-      }
+    if (intent !== 'login') {
+      return NextResponse.json(
+        { error: 'Use Get started to create a new shop.' },
+        { status: 400 }
+      );
     }
 
-    const result = await sendLoginOtp(body.phone);
+    const variants = whatsAppPhoneVariants(body.phone);
+    const vendor = await prisma.vendor.findFirst({
+      where: { phoneNumber: { in: variants.length ? variants : [phone] } },
+    });
+    if (!vendor) {
+      return NextResponse.json(
+        { error: 'No shop found for this number. Get started to create one.' },
+        { status: 404 }
+      );
+    }
+
+    const waStatus = await getVendorWhatsAppStatus(body.phone);
+    if (!waStatus.connected) {
+      return NextResponse.json(
+        { error: 'Connect WhatsApp first by scanning the QR code.', needsReconnect: true },
+        { status: 400 }
+      );
+    }
+
+    const result = await sendLoginOtp(body.phone, {
+      sessionId: vendor.openwaSessionId ?? undefined,
+    });
     return NextResponse.json({
       ok: true,
       phone: result.phone,
       message: 'Verification code sent to your WhatsApp.',
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to send code';
-    console.error('[OTP Send]', message);
-    return NextResponse.json({ error: message }, { status: 400 });
+    console.error('[OTP Send]', error);
+    return NextResponse.json({ error: toVendorError(error) }, { status: 400 });
   }
 }

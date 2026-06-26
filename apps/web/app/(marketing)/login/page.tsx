@@ -11,14 +11,14 @@ export default function LoginPage() {
   return (
     <AuthShell
       title="Log in"
-      description="We'll send a one-time code to your WhatsApp — your second factor to access the dashboard."
+      description="Connect WhatsApp, then we'll send a one-time code to verify it's you."
     >
       <div className="border-border/60 bg-muted/20 rounded-xl border px-5 py-6">
-        <WhatsAppOtpForm intent="login" />
+        <WhatsAppOtpForm />
         <p className="text-muted-foreground mt-6 text-center text-xs">
           New here?{" "}
-          <Link href="/signup" className="text-primary underline-offset-4 hover:underline">
-            Create a shop
+          <Link href="/get-started" className="text-primary underline-offset-4 hover:underline">
+            Get started
           </Link>
         </p>
       </div>

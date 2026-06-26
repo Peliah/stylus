@@ -11,13 +11,19 @@ interface OpenWARequestOptions {
   method: 'GET' | 'POST' | 'DELETE';
   path: string;
   body?: Record<string, unknown>;
+  sessionId?: string;
+}
+
+function resolveSessionId(sessionId?: string): string {
+  return sessionId ?? OPENWA_SESSION_ID;
 }
 
 /**
  * Low-level request wrapper for OpenWA REST endpoints.
  */
-async function openwaRequest({ method, path, body }: OpenWARequestOptions) {
-  const url = `${OPENWA_API_URL}/api/sessions/${OPENWA_SESSION_ID}${path}`;
+async function openwaRequest({ method, path, body, sessionId }: OpenWARequestOptions) {
+  const sid = resolveSessionId(sessionId);
+  const url = `${OPENWA_API_URL}/api/sessions/${sid}${path}`;
   const headers: Record<string, string> = {
     'X-API-Key': OPENWA_API_KEY,
   };
@@ -53,20 +59,24 @@ interface ContactCheckResponse {
 /**
  * Resolves a phone number to the chat id OpenWA/WhatsApp expects (often @lid, not @c.us).
  */
-export async function resolveWhatsAppChatId(phoneInput: string): Promise<string> {
+export async function resolveWhatsAppChatId(
+  phoneInput: string,
+  sessionId?: string
+): Promise<string> {
   const digits = phoneInput.replace(/@.*$/, '').replace(/\D/g, '');
   if (!digits) {
     throw new Error('Enter a valid phone number');
   }
 
-  const url = `${OPENWA_API_URL}/api/sessions/${OPENWA_SESSION_ID}/contacts/check/${digits}`;
+  const sid = resolveSessionId(sessionId);
+  const url = `${OPENWA_API_URL}/api/sessions/${sid}/contacts/check/${digits}`;
   const response = await fetch(url, {
     method: 'GET',
     headers: { 'X-API-Key': OPENWA_API_KEY },
   });
 
   if (!response.ok) {
-    throw new Error('Could not verify WhatsApp number. Is the gateway connected?');
+    throw new Error('Could not verify WhatsApp number. Connect WhatsApp first.');
   }
 
   const data = (await response.json()) as ContactCheckResponse;
@@ -84,17 +94,22 @@ export async function resolveWhatsAppChatId(phoneInput: string): Promise<string>
  * Sends immediately via OpenWA — throws on failure.
  * Resolves @c.us ids to the canonical WhatsApp chat id before sending.
  */
-export async function deliverTextMessage(chatId: string, text: string): Promise<void> {
+export async function deliverTextMessage(
+  chatId: string,
+  text: string,
+  sessionId?: string
+): Promise<void> {
   const targetChatId =
     chatId.includes('@lid') || !chatId.endsWith('@c.us')
       ? chatId
-      : await resolveWhatsAppChatId(chatId);
+      : await resolveWhatsAppChatId(chatId, sessionId);
 
   try {
     await openwaRequest({
       method: 'POST',
       path: '/messages/send-text',
       body: { chatId: targetChatId, text },
+      sessionId,
     });
   } catch (error) {
     if (error instanceof Error && error.message.includes('[500]')) {
@@ -131,9 +146,10 @@ export async function registerWebhook(webhookUrl: string, secret?: string): Prom
 /**
  * Fetches OpenWA session health for monitoring and dashboard status.
  */
-export async function getGatewaySnapshot(): Promise<GatewaySnapshot> {
+export async function getGatewaySnapshot(sessionId?: string): Promise<GatewaySnapshot> {
+  const sid = resolveSessionId(sessionId);
   try {
-    const url = `${OPENWA_API_URL}/api/sessions/${OPENWA_SESSION_ID}`;
+    const url = `${OPENWA_API_URL}/api/sessions/${sid}`;
     const response = await fetch(url, {
       method: 'GET',
       headers: { 'X-API-Key': OPENWA_API_KEY },
@@ -141,7 +157,7 @@ export async function getGatewaySnapshot(): Promise<GatewaySnapshot> {
 
     if (!response.ok) {
       return {
-        sessionId: OPENWA_SESSION_ID,
+        sessionId: sid,
         rawStatus: 'DISCONNECTED',
         state: 'disconnected',
         phone: null,
@@ -159,7 +175,7 @@ export async function getGatewaySnapshot(): Promise<GatewaySnapshot> {
 
     const rawStatus = data.status || 'unknown';
     return {
-      sessionId: OPENWA_SESSION_ID,
+      sessionId: sid,
       rawStatus,
       state: normalizeGatewayStatus(rawStatus),
       phone: data.phone ?? null,
@@ -168,7 +184,7 @@ export async function getGatewaySnapshot(): Promise<GatewaySnapshot> {
     };
   } catch {
     return {
-      sessionId: OPENWA_SESSION_ID,
+      sessionId: sid,
       rawStatus: 'UNREACHABLE',
       state: 'unreachable',
       phone: null,

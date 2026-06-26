@@ -24,7 +24,10 @@ function generateCode(): string {
   return crypto.randomInt(0, 1_000_000).toString().padStart(6, '0');
 }
 
-export async function sendLoginOtp(phoneInput: string): Promise<{ phone: string }> {
+export async function sendLoginOtp(
+  phoneInput: string,
+  options?: { sessionId?: string }
+): Promise<{ phone: string }> {
   const phone = normalizeWhatsAppPhone(phoneInput);
 
   const onCooldown = await redis.get(cooldownKey(phone));
@@ -50,7 +53,7 @@ export async function sendLoginOtp(phoneInput: string): Promise<{ phone: string 
     `It expires in 10 minutes. If you didn't request this, ignore this message.`;
 
   try {
-    await deliverTextMessage(phone, message);
+    await deliverTextMessage(phone, message, options?.sessionId);
   } catch (error) {
     const errMessage = error instanceof Error ? error.message : 'Failed to send WhatsApp code';
     throw new Error(errMessage);

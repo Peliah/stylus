@@ -1,40 +1,113 @@
 "use client"
 
-import { useState } from "react"
+import { useCallback, useEffect, useState, useTransition } from "react"
 import { signIn } from "next-auth/react"
 import { Button } from "@workspace/ui/components/button"
+import { WhatsAppConnectCard } from "@/components/setup/whatsapp-connect-card"
 
-type WhatsAppOtpFormProps = {
-  intent: "login" | "signup"
-}
+type LoginStep = "phone" | "reconnect" | "code"
 
-export function WhatsAppOtpForm({ intent }: WhatsAppOtpFormProps) {
-  const [step, setStep] = useState<"phone" | "code">("phone")
+export function WhatsAppOtpForm() {
+  const [step, setStep] = useState<LoginStep>("phone")
   const [phone, setPhone] = useState("")
-  const [shopName, setShopName] = useState("")
   const [code, setCode] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [pending, startTransition] = useTransition()
   const [sentPhone, setSentPhone] = useState<string | null>(null)
+  const [qr, setQr] = useState<string | null>(null)
+  const [connected, setConnected] = useState(false)
 
-  async function handleSendCode(e: React.FormEvent) {
+  const fetchQr = useCallback(async (phoneNumber: string) => {
+    const res = await fetch("/api/auth/whatsapp/qr", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone: phoneNumber }),
+    })
+    if (!res.ok) return
+    const data = (await res.json()) as { qr: string | null }
+    setQr(data.qr)
+  }, [])
+
+  const checkConnection = useCallback(async (phoneNumber: string) => {
+    const res = await fetch("/api/auth/whatsapp/status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone: phoneNumber }),
+    })
+    if (!res.ok) return false
+    const data = (await res.json()) as { connected?: boolean }
+    setConnected(data.connected ?? false)
+    return data.connected ?? false
+  }, [])
+
+  const sendOtp = useCallback(async (phoneNumber: string) => {
+    const res = await fetch("/api/auth/otp/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone: phoneNumber, intent: "login" }),
+    })
+    const data = (await res.json()) as { error?: string; phone?: string; needsReconnect?: boolean }
+    if (!res.ok) {
+      if (data.needsReconnect) {
+        setStep("reconnect")
+        await fetch("/api/auth/whatsapp/prepare", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone: phoneNumber }),
+        })
+        await fetchQr(phoneNumber)
+        return false
+      }
+      setError(data.error ?? "Failed to send code")
+      return false
+    }
+    setSentPhone(data.phone ?? phoneNumber)
+    return true
+  }, [fetchQr])
+
+  useEffect(() => {
+    if (step !== "reconnect" || !phone) return
+
+    void fetchQr(phone)
+
+    const interval = setInterval(async () => {
+      const isConnected = await checkConnection(phone)
+      if (isConnected) {
+        setStep("code")
+        await sendOtp(phone)
+      } else {
+        await fetchQr(phone)
+      }
+    }, 4000)
+
+    return () => clearInterval(interval)
+  }, [step, phone, fetchQr, checkConnection, sendOtp])
+
+  async function handlePhoneSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
     setLoading(true)
 
     try {
-      const res = await fetch("/api/auth/otp/send", {
+      const prep = await fetch("/api/auth/whatsapp/prepare", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, intent }),
+        body: JSON.stringify({ phone }),
       })
-      const data = (await res.json()) as { error?: string; phone?: string }
-      if (!res.ok) {
-        setError(data.error ?? "Failed to send code")
+      const prepData = (await prep.json()) as { error?: string; connected?: boolean }
+      if (!prep.ok) {
+        setError(prepData.error ?? "Could not find your shop")
         return
       }
-      setSentPhone(data.phone ?? phone)
-      setStep("code")
+
+      if (prepData.connected) {
+        const ok = await sendOtp(phone)
+        if (ok) setStep("code")
+      } else {
+        setStep("reconnect")
+        await fetchQr(phone)
+      }
     } catch {
       setError("Network error. Try again.")
     } finally {
@@ -51,8 +124,7 @@ export function WhatsAppOtpForm({ intent }: WhatsAppOtpFormProps) {
       const result = await signIn("whatsapp-otp", {
         phone: sentPhone ?? phone,
         code,
-        intent,
-        shopName: intent === "signup" ? shopName : undefined,
+        intent: "login",
         redirect: false,
         callbackUrl: "/dashboard",
       })
@@ -62,7 +134,7 @@ export function WhatsAppOtpForm({ intent }: WhatsAppOtpFormProps) {
         return
       }
 
-      window.location.href = intent === "signup" ? "/onboarding" : "/dashboard"
+      window.location.href = "/dashboard"
     } catch {
       setError("Verification failed. Try again.")
     } finally {
@@ -72,20 +144,7 @@ export function WhatsAppOtpForm({ intent }: WhatsAppOtpFormProps) {
 
   if (step === "phone") {
     return (
-      <form onSubmit={handleSendCode} className="flex flex-col gap-4">
-        {intent === "signup" && (
-          <label className="flex flex-col gap-1.5 text-sm">
-            <span className="text-muted-foreground text-xs font-medium">Shop name</span>
-            <input
-              value={shopName}
-              onChange={(e) => setShopName(e.target.value)}
-              placeholder="Peliah Bakery"
-              required
-              className="border-input bg-background h-10 rounded-lg border px-3"
-            />
-          </label>
-        )}
-
+      <form onSubmit={handlePhoneSubmit} className="flex flex-col gap-4">
         <label className="flex flex-col gap-1.5 text-sm">
           <span className="text-muted-foreground text-xs font-medium">WhatsApp number</span>
           <input
@@ -98,16 +157,29 @@ export function WhatsAppOtpForm({ intent }: WhatsAppOtpFormProps) {
             className="border-input bg-background h-10 rounded-lg border px-3"
           />
           <span className="text-muted-foreground text-xs">
-            We&apos;ll send a 6-digit code to this number on WhatsApp.
+            We&apos;ll verify your shop and send a code to this WhatsApp.
           </span>
         </label>
-
         {error && <p className="text-destructive text-sm">{error}</p>}
-
         <Button type="submit" disabled={loading} className="rounded-full">
-          {loading ? "Sending…" : "Send code to WhatsApp"}
+          {loading ? "Checking…" : "Continue"}
         </Button>
       </form>
+    )
+  }
+
+  if (step === "reconnect") {
+    return (
+      <div className="flex flex-col gap-4">
+        <p className="text-muted-foreground text-sm">
+          Reconnect WhatsApp to continue logging in.
+        </p>
+        <WhatsAppConnectCard qr={qr} connected={connected} />
+        {error && <p className="text-destructive text-sm">{error}</p>}
+        <Button type="button" variant="ghost" className="rounded-full" onClick={() => setStep("phone")}>
+          Change number
+        </Button>
+      </div>
     )
   }
 
@@ -115,9 +187,8 @@ export function WhatsAppOtpForm({ intent }: WhatsAppOtpFormProps) {
     <form onSubmit={handleVerify} className="flex flex-col gap-4">
       <p className="text-muted-foreground text-sm">
         Enter the 6-digit code we sent to your WhatsApp
-        {sentPhone ? ` (+${sentPhone.replace("@c.us", "")})` : ""}.
+        {sentPhone ? ` (+${sentPhone.replace("@c.us", "").replace(/\D/g, "")})` : ""}.
       </p>
-
       <label className="flex flex-col gap-1.5 text-sm">
         <span className="text-muted-foreground text-xs font-medium">Verification code</span>
         <input
@@ -130,27 +201,35 @@ export function WhatsAppOtpForm({ intent }: WhatsAppOtpFormProps) {
           className="border-input bg-background h-10 rounded-lg border px-3 font-mono tracking-widest"
         />
       </label>
-
       {error && <p className="text-destructive text-sm">{error}</p>}
-
       <div className="flex flex-col gap-2 sm:flex-row">
-        <Button type="submit" disabled={loading || code.length !== 6} className="rounded-full">
-          {loading ? "Verifying…" : "Verify & continue"}
+        <Button type="submit" disabled={loading || pending || code.length !== 6} className="rounded-full">
+          {loading ? "Verifying…" : "Log in"}
         </Button>
         <Button
           type="button"
           variant="ghost"
           className="rounded-full"
-          disabled={loading}
+          disabled={loading || pending}
           onClick={() => {
             setStep("phone")
             setCode("")
             setError(null)
           }}
         >
-          Change number
+          Start over
         </Button>
       </div>
+      <Button
+        type="button"
+        variant="link"
+        size="sm"
+        className="self-start px-0"
+        disabled={pending}
+        onClick={() => startTransition(() => void sendOtp(sentPhone ?? phone))}
+      >
+        Resend code
+      </Button>
     </form>
   )
 }

@@ -6,9 +6,7 @@ import { AlertTriangle, WifiOff } from "lucide-react"
 interface HealthResponse {
   gateway: {
     state: "connected" | "disconnected" | "unreachable"
-    status: string
     connected: boolean
-    lastError: string | null
   }
   outbound: {
     pending: number
@@ -32,9 +30,7 @@ export function GatewayStatusBanner() {
           setHealth({
             gateway: {
               state: "unreachable",
-              status: "UNREACHABLE",
               connected: false,
-              lastError: "Cannot reach CRM health endpoint",
             },
             outbound: { pending: 0 },
           })
@@ -74,17 +70,14 @@ export function GatewayStatusBanner() {
       <div className="space-y-0.5">
         <p className="font-medium">
           {isUnreachable
-            ? "WhatsApp gateway unreachable"
-            : `WhatsApp disconnected (${gateway.status})`}
+            ? "We couldn't reach WhatsApp right now"
+            : "WhatsApp disconnected"}
         </p>
         <p className="opacity-90">
           {outbound.pending > 0
-            ? `${outbound.pending} outbound message${outbound.pending === 1 ? "" : "s"} queued — will send when reconnected.`
-            : "Outbound replies will queue until the session is connected again."}
+            ? `${outbound.pending} message${outbound.pending === 1 ? "" : "s"} queued — will send when you're connected again.`
+            : "Reconnect WhatsApp to send and receive messages."}
         </p>
-        {gateway.lastError && (
-          <p className="text-xs opacity-75">{gateway.lastError}</p>
-        )}
       </div>
     </div>
   )

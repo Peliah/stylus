@@ -1,13 +1,15 @@
 import { NextResponse } from 'next/server';
-import { getGatewaySnapshot } from '../../../lib/openwa-client';
 import { getOutboundPendingCount } from '../../../lib/outbound-queue';
+import { getActiveVendor } from '../../../lib/vendor';
+import { getVendorConnectionStatus } from '../../../lib/whatsapp-connection';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    const [gateway, outboundPending] = await Promise.all([
-      getGatewaySnapshot(),
+    const vendor = await getActiveVendor();
+    const [{ gateway, connected }, outboundPending] = await Promise.all([
+      getVendorConnectionStatus(vendor),
       getOutboundPendingCount(),
     ]);
 
@@ -16,7 +18,7 @@ export async function GET() {
         sessionId: gateway.sessionId,
         status: gateway.rawStatus,
         state: gateway.state,
-        connected: gateway.state === 'connected',
+        connected,
         phone: gateway.phone,
         pushName: gateway.pushName,
         lastError: gateway.lastError,

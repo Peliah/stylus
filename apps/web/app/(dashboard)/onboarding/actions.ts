@@ -13,7 +13,6 @@ import {
   startOpenwaSession,
 } from "@/lib/openwa-session"
 import { prisma } from "@/lib/prisma"
-import { resolveVendorSessionId } from "@/lib/vendor-session"
 import { createProductAction } from "@/app/(dashboard)/(main)/dashboard/products/actions"
 
 export async function updateShopNameAction(name: string) {
@@ -25,12 +24,11 @@ export async function updateShopNameAction(name: string) {
 export async function prepareWhatsAppAction() {
   const vendorId = await requireAuthVendorId()
   const vendor = await prisma.vendor.findUniqueOrThrow({ where: { id: vendorId } })
-  const sessionId = resolveVendorSessionId(vendor)
-
-  await ensureOpenwaSession(sessionId, vendor.name)
+  const sessionName = `stylus-vendor-${vendor.id}`
+  const sessionId = await ensureOpenwaSession(vendor.openwaSessionId, sessionName)
   await startOpenwaSession(sessionId)
 
-  if (!vendor.openwaSessionId) {
+  if (vendor.openwaSessionId !== sessionId) {
     await prisma.vendor.update({
       where: { id: vendorId },
       data: { openwaSessionId: sessionId },

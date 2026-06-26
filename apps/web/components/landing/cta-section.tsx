@@ -20,7 +20,7 @@ export function CtaSection() {
             <span className="text-muted-foreground font-normal">Answer fewer repeated questions.</span>
           </h2>
           <div className="mt-9">
-            <Button size="lg" className="h-12 rounded-full px-8 text-base" nativeButton={false} render={<Link href="/signup" />}>
+            <Button size="lg" className="h-12 rounded-full px-8 text-base" nativeButton={false} render={<Link href="/get-started" />}>
               Create your shop
             </Button>
           </div>

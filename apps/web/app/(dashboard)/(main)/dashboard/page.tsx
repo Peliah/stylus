@@ -1,16 +1,17 @@
 import Link from "next/link"
-import { getGatewaySnapshot } from "@/lib/openwa-client"
 import { getOutboundPendingCount } from "@/lib/outbound-queue"
 import { prisma } from "@/lib/prisma"
 import { getActiveVendor } from "@/lib/vendor"
+import { getVendorConnectionStatus } from "@/lib/whatsapp-connection"
+import { WhatsAppReconnectPanel } from "@/components/setup/whatsapp-reconnect-panel"
 
 export default async function DashboardPage() {
   const vendor = await getActiveVendor()
   const vendorId = vendor.id
 
-  const [gateway, outboundPending, pendingSuggestions, orderCount, productCount, customerCount] =
+  const [connection, outboundPending, pendingSuggestions, orderCount, productCount, customerCount] =
     await Promise.all([
-      getGatewaySnapshot(),
+      getVendorConnectionStatus(vendor),
       getOutboundPendingCount(),
       vendorId
         ? prisma.suggestion.count({ where: { vendorId, status: "PENDING" } })
@@ -20,7 +21,7 @@ export default async function DashboardPage() {
       prisma.customer.count({ where: { vendorId } }),
     ])
 
-  const connected = gateway.state === "connected"
+  const { gateway, connected } = connection
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
@@ -40,25 +41,18 @@ export default async function DashboardPage() {
       >
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-sm font-medium">WhatsApp connection</p>
+            <p className="text-sm font-medium">WhatsApp</p>
             <p className="mt-1 text-sm">
               {connected ? (
-                <span className="text-emerald-600 dark:text-emerald-400">
-                  Connected ({gateway.rawStatus})
-                </span>
+                <span className="text-emerald-600 dark:text-emerald-400">Connected</span>
               ) : gateway.state === "unreachable" ? (
-                <span className="text-destructive">Gateway unreachable</span>
+                <span className="text-destructive">Unavailable — try again in a moment</span>
               ) : (
-                <span className="text-amber-700 dark:text-amber-300">
-                  Disconnected ({gateway.rawStatus})
-                </span>
+                <span className="text-amber-700 dark:text-amber-300">Not connected</span>
               )}
             </p>
             {gateway.phone && (
               <p className="text-muted-foreground mt-1 text-xs">+{gateway.phone}</p>
-            )}
-            {gateway.lastError && !connected && (
-              <p className="text-muted-foreground mt-1 text-xs">{gateway.lastError}</p>
             )}
           </div>
           {outboundPending > 0 && (
@@ -68,18 +62,12 @@ export default async function DashboardPage() {
           )}
         </div>
         {!connected && (
-          <p className="text-muted-foreground mt-3 text-xs leading-relaxed">
-            Outbound replies queue automatically and send when OpenWA reconnects. Scan QR at{" "}
-            <a
-              href="http://localhost:2785"
-              target="_blank"
-              rel="noreferrer"
-              className="text-primary underline-offset-4 hover:underline"
-            >
-              localhost:2785
-            </a>
-            .
-          </p>
+          <>
+            <p className="text-muted-foreground mt-3 text-xs leading-relaxed">
+              Outbound replies queue automatically and send when WhatsApp is connected again.
+            </p>
+            <WhatsAppReconnectPanel phone={vendor.phoneNumber.replace("@c.us", "")} />
+          </>
         )}
       </section>
 

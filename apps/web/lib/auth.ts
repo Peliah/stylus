@@ -2,6 +2,8 @@ import type { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import { verifyLoginOtp } from './auth-otp';
 import { prisma } from './prisma';
+import { getPendingSetup } from './setup-session';
+import { consumeSetup } from './setup-service';
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -13,9 +15,48 @@ export const authOptions: NextAuthOptions = {
         code: { label: 'Code', type: 'text' },
         shopName: { label: 'Shop name', type: 'text' },
         intent: { label: 'Intent', type: 'text' },
+        setupId: { label: 'Setup ID', type: 'text' },
       },
       async authorize(credentials) {
-        if (!credentials?.phone || !credentials?.code) {
+        if (!credentials?.code) {
+          return null;
+        }
+
+        // New vendor signup via /get-started setup flow
+        if (credentials.setupId) {
+          const setup = await getPendingSetup(credentials.setupId);
+          if (!setup?.connectedPhone) return null;
+
+          let phone: string;
+          try {
+            phone = await verifyLoginOtp(setup.connectedPhone, credentials.code);
+          } catch {
+            return null;
+          }
+
+          const existing = await prisma.vendor.findUnique({ where: { phoneNumber: phone } });
+          if (existing) return null;
+
+          const vendor = await prisma.vendor.create({
+            data: {
+              name: setup.shopName?.trim() || 'My Shop',
+              phoneNumber: phone,
+              openwaSessionId: setup.openwaSessionId,
+              whatsappLinkedAt: new Date(),
+              onboardingComplete: false,
+            },
+          });
+
+          await consumeSetup(credentials.setupId);
+
+          return {
+            id: vendor.id,
+            name: vendor.name,
+            phone: vendor.phoneNumber,
+          };
+        }
+
+        if (!credentials.phone) {
           return null;
         }
 

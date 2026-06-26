@@ -61,7 +61,7 @@ export function HeroSection() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.35, duration: 0.45 }}
           >
-            <Button size="lg" className="h-11 rounded-full px-6" nativeButton={false} render={<Link href="/signup" />}>
+            <Button size="lg" className="h-11 rounded-full px-6" nativeButton={false} render={<Link href="/get-started" />}>
               Start free
             </Button>
             <Button variant="ghost" size="lg" className="h-11 text-muted-foreground" nativeButton={false} render={<a href="#story" />}>

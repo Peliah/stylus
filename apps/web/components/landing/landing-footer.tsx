@@ -11,8 +11,8 @@ export function LandingFooter() {
           <Link href="/login" className="text-muted-foreground hover:text-foreground">
             log in
           </Link>
-          <Link href="/signup" className="text-muted-foreground hover:text-foreground">
-            sign up
+          <Link href="/get-started" className="text-muted-foreground hover:text-foreground">
+            get started
           </Link>
           <a href="#story" className="text-muted-foreground hover:text-foreground">
             how it works

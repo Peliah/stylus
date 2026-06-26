@@ -50,7 +50,7 @@ async function api(method, urlPath, body) {
 // Ensure session exists
 let r = await api('GET', `/api/sessions/${session}`);
 if (r.status === 404) {
-  r = await api('POST', '/api/sessions', { id: session, name: 'Stylus Vendor' });
+  r = await api('POST', '/api/sessions', { name: 'stylus-vendor' });
   console.log('Created session:', r.status, r.json.message || r.json.id || '');
 }
 
@@ -58,7 +58,7 @@ r = await api('POST', `/api/sessions/${session}/start`);
 console.log('Start session:', r.status, r.json.message || r.json.status || '');
 
 r = await api('GET', `/api/sessions/${session}/qr`);
-if (r.json?.qr) {
+if (r.json?.qr || r.json?.qrCode) {
   console.log('\n📱 Scan QR with WhatsApp on +237650810984');
   console.log(`   Dashboard: ${base}/\n`);
 } else {

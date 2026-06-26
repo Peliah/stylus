@@ -40,7 +40,7 @@ export function LandingNav() {
           <Button variant="ghost" size="sm" className="rounded-full" nativeButton={false} render={<Link href="/login" />}>
             Log in
           </Button>
-          <Button size="sm" className="rounded-full" nativeButton={false} render={<Link href="/signup" />}>
+          <Button size="sm" className="rounded-full" nativeButton={false} render={<Link href="/get-started" />}>
             Get started
           </Button>
         </div>
