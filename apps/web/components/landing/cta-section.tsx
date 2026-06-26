@@ -20,12 +20,12 @@ export function CtaSection() {
             <span className="text-muted-foreground font-normal">Answer fewer repeated questions.</span>
           </h2>
           <div className="mt-9">
-            <Button size="lg" className="h-12 rounded-full px-8 text-base" nativeButton={false} render={<Link href="/dashboard" />}>
-              Go to dashboard
+            <Button size="lg" className="h-12 rounded-full px-8 text-base" nativeButton={false} render={<Link href="/signup" />}>
+              Create your shop
             </Button>
           </div>
           <p className="text-muted-foreground/70 mt-6 text-xs">
-            Docker, Postgres, Redis, OpenWA — the boring stuff is already wired.
+            Free to start · your own WhatsApp number · you approve every message
           </p>
         </FadeIn>
       </div>

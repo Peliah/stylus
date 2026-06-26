@@ -10,16 +10,15 @@ export async function register() {
     console.log(`[Startup] Auto-registering CRM webhook at: ${webhookUrl}`);
     try {
       await registerWebhook(webhookUrl, webhookSecret);
-      
-      // Start the background BullMQ worker
-      await import('./lib/worker');
-      console.log('[Startup] Background BullMQ worker initialized.');
-
-      // Start the gateway health cron monitor
-      const { startHealthCheck } = await import('./lib/health');
-      startHealthCheck();
     } catch (error) {
       console.error('[Startup] Failed to register webhook on boot:', error);
     }
+
+    // Start worker regardless — webhook registration can be retried from OpenWA UI
+    await import('./lib/worker');
+    console.log('[Startup] Background BullMQ worker initialized.');
+
+    const { startHealthCheck } = await import('./lib/health');
+    startHealthCheck();
   }
 }

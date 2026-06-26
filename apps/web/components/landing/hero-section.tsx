@@ -51,8 +51,8 @@ export function HeroSection() {
             transition={{ delay: 0.25, duration: 0.5 }}
           >
             Stylus watches your WhatsApp, checks what you actually have in stock, drafts
-            the reply — then pings <em>you</em> to hit send. Nothing goes to the customer
-            until you&apos;re happy with it.
+            the reply — then pings <em>you</em> to hit send. Create a shop, connect your
+            number, and nothing goes to a customer until you approve it.
           </motion.p>
 
           <motion.div
@@ -61,11 +61,11 @@ export function HeroSection() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.35, duration: 0.45 }}
           >
-            <Button size="lg" className="h-11 rounded-full px-6" nativeButton={false} render={<Link href="/dashboard" />}>
-              Open the dashboard
+            <Button size="lg" className="h-11 rounded-full px-6" nativeButton={false} render={<Link href="/signup" />}>
+              Start free
             </Button>
             <Button variant="ghost" size="lg" className="h-11 text-muted-foreground" nativeButton={false} render={<a href="#story" />}>
-              Read how a order actually flows →
+              See how an order flows →
             </Button>
           </motion.div>
 

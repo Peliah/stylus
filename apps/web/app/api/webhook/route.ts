@@ -28,10 +28,17 @@ export async function POST(req: NextRequest) {
     const { event, data } = body;
 
     if (event !== 'message.received' && event !== 'message.sent') {
+      console.log(`[Webhook] Ignored event: ${event}`);
       return NextResponse.json({ received: true, ignoredEvent: event });
     }
 
-    const { id: messageId, from, to, body: messageContent, type } = data;
+    // Outbound events echo our own sends — only process inbound messages
+    if (event === 'message.sent') {
+      console.log(`[Webhook] Ignored outbound message.sent (fromMe=${data?.fromMe ?? 'unknown'})`);
+      return NextResponse.json({ received: true, ignoredEvent: event });
+    }
+
+    const { id: messageId, from, body: messageContent, type } = data;
     const isMedia = type !== 'chat';
 
     const cleanFrom = from.split('@')[0];

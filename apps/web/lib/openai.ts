@@ -1,7 +1,18 @@
 import OpenAI from 'openai';
 
+const apiKey = process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY || '';
+const baseURL = process.env.OPENAI_BASE_URL; // e.g. https://openrouter.ai/api/v1
+const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || '',
+  apiKey,
+  ...(baseURL ? { baseURL } : {}),
+  defaultHeaders: baseURL?.includes('openrouter.ai')
+    ? {
+        'HTTP-Referer': process.env.OPENROUTER_HTTP_REFERER || 'http://localhost:3000',
+        'X-Title': process.env.OPENROUTER_APP_NAME || 'Stylus CRM',
+      }
+    : undefined,
 });
 
 export interface SuggestedAction {
@@ -64,7 +75,7 @@ Rules:
 
   try {
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: `Analyze incoming message: "${messageContent}"` },

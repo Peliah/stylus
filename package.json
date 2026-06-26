@@ -7,7 +7,17 @@
     "dev": "turbo dev",
     "lint": "turbo lint",
     "format": "turbo format",
-    "typecheck": "turbo typecheck"
+    "typecheck": "turbo typecheck",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "db:generate": "pnpm --filter web exec prisma generate",
+    "db:migrate": "pnpm --filter web exec prisma migrate dev",
+    "db:seed": "pnpm --filter web exec prisma db seed",
+    "db:studio": "pnpm --filter web exec prisma studio",
+    "smoke:test": "node scripts/smoke-test.mjs",
+    "openwa:sync-key": "node scripts/sync-openwa-key.mjs",
+    "openwa:register-webhook": "node scripts/openwa-register-webhook.mjs",
+    "openwa:start": "node scripts/openwa-start.mjs"
   },
   "devDependencies": {
     "@workspace/eslint-config": "workspace:*",

@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { Worker, Job } from 'bullmq';
 import { getBullMqConnection } from './redis';
 import { prisma } from './prisma';
@@ -74,23 +75,22 @@ export const messageWorker = new Worker(
       // 5. Query OpenAI for analysis and draft suggestions
       const aiResult = await analyzeIncomingMessage(content, history, catalog);
 
-      // Log the message in the Customer's history
-      await prisma.message.create({
-        data: {
-          customerId: customer.id,
-          content: aiResult.proposedReply,
-          sender: 'VENDOR', // Logged as suggested vendor response
-          isMedia: false,
-        },
-      });
+      let customerName = customer.name;
+      if (aiResult.extractedCustomerName && !customer.name) {
+        await prisma.customer.update({
+          where: { id: customer.id },
+          data: { name: aiResult.extractedCustomerName },
+        });
+        customerName = aiResult.extractedCustomerName;
+      }
 
       // 6. Save the Suggestion to the database
-      const suggestion = await prisma.suggestion.create({
+      await prisma.suggestion.create({
         data: {
           vendorId: vendor.id,
           customerPhoneNumber: customerPhoneNumber,
           proposedReply: aiResult.proposedReply,
-          proposedActions: JSON.stringify(aiResult.proposedActions),
+          proposedActions: aiResult.proposedActions as unknown as Prisma.InputJsonValue,
           status: 'PENDING',
         },
       });
@@ -112,7 +112,7 @@ export const messageWorker = new Worker(
       }
 
       const vendorNotificationText = 
-        `*New Message from ${customer.name || customerPhoneNumber}*\n` +
+        `*New Message from ${customerName || customerPhoneNumber}*\n` +
         `"${content}"\n\n` +
         `*Suggested Reply:*\n` +
         `"${aiResult.proposedReply}"\n` +

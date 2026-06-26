@@ -8,8 +8,11 @@ export function LandingFooter() {
           Stylus — WhatsApp orders without losing your mind
         </p>
         <div className="flex gap-5 font-mono text-xs">
-          <Link href="/dashboard" className="text-muted-foreground hover:text-foreground">
-            dashboard
+          <Link href="/login" className="text-muted-foreground hover:text-foreground">
+            log in
+          </Link>
+          <Link href="/signup" className="text-muted-foreground hover:text-foreground">
+            sign up
           </Link>
           <a href="#story" className="text-muted-foreground hover:text-foreground">
             how it works

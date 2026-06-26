@@ -33,6 +33,7 @@ services:
     ports:
       - "2785:2785"
     environment:
+      - ALLOW_DEV_API_KEY=true
       - API_KEY=openwa_secure_token
       - DB_TYPE=sqlite
       - PORT=2785

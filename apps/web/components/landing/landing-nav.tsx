@@ -36,9 +36,14 @@ export function LandingNav() {
           </a>
         </nav>
 
-        <Button size="sm" className="rounded-full" nativeButton={false} render={<Link href="/dashboard" />}>
-          Dashboard
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" className="rounded-full" nativeButton={false} render={<Link href="/login" />}>
+            Log in
+          </Button>
+          <Button size="sm" className="rounded-full" nativeButton={false} render={<Link href="/signup" />}>
+            Get started
+          </Button>
+        </div>
       </div>
     </header>
   )

@@ -9,6 +9,7 @@
  */
 import { prisma } from '../../../lib/prisma';
 import { sendMessage } from '../../../lib/openwa';
+import { logVendorReply } from '../../../lib/suggestions';
 import { getOrCreateDefaultVendor, VENDOR_PHONE_NUMBER } from './db';
 import { executeApprovedActions } from './actions';
 
@@ -37,7 +38,8 @@ export async function handleVendorCommand(commandText: string) {
     console.log(`[Command] Vendor approved suggestion for customer ${customerPhone}`);
     await executeApprovedActions(suggestion);
     await sendMessage(customerPhone, suggestion.proposedReply);
-    
+    await logVendorReply(vendor.id, customerPhone, suggestion.proposedReply);
+
     await prisma.suggestion.update({
       where: { id: suggestion.id },
       data: { status: 'APPROVED' },
@@ -71,6 +73,7 @@ export async function handleVendorCommand(commandText: string) {
 
     await executeApprovedActions(suggestion);
     await sendMessage(customerPhone, customReply);
+    await logVendorReply(vendor.id, customerPhone, customReply);
 
     await prisma.suggestion.update({
       where: { id: suggestion.id },
