@@ -14,6 +14,7 @@ import { sendMessage } from '../../../lib/openwa';
 import { verifyWebhookSignature } from './verify';
 import { getOrCreateDefaultVendor, VENDOR_PHONE_NUMBER } from './db';
 import { handleVendorCommand } from './commands';
+import { getIgnoredMessageReason, isMediaMessage } from './message-utils';
 
 export async function POST(req: NextRequest) {
   try {
@@ -39,7 +40,14 @@ export async function POST(req: NextRequest) {
     }
 
     const { id: messageId, from, body: messageContent, type } = data;
-    const isMedia = type !== 'chat';
+
+    const ignoredReason = getIgnoredMessageReason(data);
+    if (ignoredReason) {
+      console.log(`[Webhook] Ignored message (${ignoredReason}) from ${from ?? 'unknown'}`);
+      return NextResponse.json({ received: true, ignoredReason });
+    }
+
+    const isMedia = isMediaMessage(data);
 
     const cleanFrom = from.split('@')[0];
     const cleanVendor = VENDOR_PHONE_NUMBER.split('@')[0];

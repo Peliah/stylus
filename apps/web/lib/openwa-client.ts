@@ -40,15 +40,70 @@ async function openwaRequest({ method, path, body }: OpenWARequestOptions) {
   return await response.json();
 }
 
+interface ContactCheckResponse {
+  exists?: boolean;
+  whatsappId?: string;
+  data?: {
+    exists?: boolean;
+    chatId?: string;
+    whatsappId?: string;
+  };
+}
+
+/**
+ * Resolves a phone number to the chat id OpenWA/WhatsApp expects (often @lid, not @c.us).
+ */
+export async function resolveWhatsAppChatId(phoneInput: string): Promise<string> {
+  const digits = phoneInput.replace(/@.*$/, '').replace(/\D/g, '');
+  if (!digits) {
+    throw new Error('Enter a valid phone number');
+  }
+
+  const url = `${OPENWA_API_URL}/api/sessions/${OPENWA_SESSION_ID}/contacts/check/${digits}`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: { 'X-API-Key': OPENWA_API_KEY },
+  });
+
+  if (!response.ok) {
+    throw new Error('Could not verify WhatsApp number. Is the gateway connected?');
+  }
+
+  const data = (await response.json()) as ContactCheckResponse;
+  const exists = data.exists ?? data.data?.exists;
+  const chatId = data.whatsappId ?? data.data?.whatsappId ?? data.data?.chatId;
+
+  if (!exists || !chatId) {
+    throw new Error('This number is not registered on WhatsApp.');
+  }
+
+  return chatId;
+}
+
 /**
  * Sends immediately via OpenWA — throws on failure.
+ * Resolves @c.us ids to the canonical WhatsApp chat id before sending.
  */
 export async function deliverTextMessage(chatId: string, text: string): Promise<void> {
-  await openwaRequest({
-    method: 'POST',
-    path: '/messages/send-text',
-    body: { chatId, text },
-  });
+  const targetChatId =
+    chatId.includes('@lid') || !chatId.endsWith('@c.us')
+      ? chatId
+      : await resolveWhatsAppChatId(chatId);
+
+  try {
+    await openwaRequest({
+      method: 'POST',
+      path: '/messages/send-text',
+      body: { chatId: targetChatId, text },
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('[500]')) {
+      throw new Error(
+        'WhatsApp could not deliver to this number. Check the number and try again.'
+      );
+    }
+    throw error;
+  }
 }
 
 /**

@@ -1,30 +1,26 @@
 import Link from "next/link"
-import { Button } from "@workspace/ui/components/button"
 import { AuthShell } from "@/components/landing/auth-shell"
+import { WhatsAppOtpForm } from "@/components/auth/whatsapp-otp-form"
 
 export const metadata = {
   title: "Log in — Stylus",
-  description: "Log in to your Stylus vendor dashboard.",
+  description: "Log in to your Stylus vendor dashboard with WhatsApp verification.",
 }
 
 export default function LoginPage() {
   return (
     <AuthShell
       title="Log in"
-      description="Access your orders, catalog, and pending AI suggestions."
+      description="We'll send a one-time code to your WhatsApp — your second factor to access the dashboard."
     >
       <div className="border-border/60 bg-muted/20 rounded-xl border px-5 py-6">
-        <p className="text-muted-foreground text-sm leading-relaxed">
-          Vendor login lands in Phase D. Until then, the dashboard is open for preview.
-        </p>
-        <div className="mt-5 flex flex-col gap-2 sm:flex-row">
-          <Button className="rounded-full" nativeButton={false} render={<Link href="/dashboard" />}>
-            Continue to dashboard
-          </Button>
-          <Button variant="ghost" className="rounded-full" nativeButton={false} render={<Link href="/signup" />}>
+        <WhatsAppOtpForm intent="login" />
+        <p className="text-muted-foreground mt-6 text-center text-xs">
+          New here?{" "}
+          <Link href="/signup" className="text-primary underline-offset-4 hover:underline">
             Create a shop
-          </Button>
-        </div>
+          </Link>
+        </p>
       </div>
     </AuthShell>
   )

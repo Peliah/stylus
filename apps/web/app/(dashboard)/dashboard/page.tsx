@@ -2,13 +2,11 @@ import Link from "next/link"
 import { getGatewaySnapshot } from "@/lib/openwa-client"
 import { getOutboundPendingCount } from "@/lib/outbound-queue"
 import { prisma } from "@/lib/prisma"
+import { getActiveVendor } from "@/lib/vendor"
 
 export default async function DashboardPage() {
-  const vendor = await prisma.vendor.findFirst({
-    orderBy: { createdAt: "asc" },
-  })
-
-  const vendorId = vendor?.id
+  const vendor = await getActiveVendor()
+  const vendorId = vendor.id
 
   const [gateway, outboundPending, pendingSuggestions, orderCount, productCount, customerCount] =
     await Promise.all([
@@ -17,9 +15,9 @@ export default async function DashboardPage() {
       vendorId
         ? prisma.suggestion.count({ where: { vendorId, status: "PENDING" } })
         : Promise.resolve(0),
-      vendorId ? prisma.order.count({ where: { vendorId } }) : Promise.resolve(0),
-      vendorId ? prisma.product.count({ where: { vendorId } }) : Promise.resolve(0),
-      vendorId ? prisma.customer.count({ where: { vendorId } }) : Promise.resolve(0),
+      prisma.order.count({ where: { vendorId } }),
+      prisma.product.count({ where: { vendorId } }),
+      prisma.customer.count({ where: { vendorId } }),
     ])
 
   const connected = gateway.state === "connected"
@@ -89,13 +87,8 @@ export default async function DashboardPage() {
         <StatCard label="Pending suggestions" value={pendingSuggestions} href="/dashboard/suggestions" />
         <StatCard label="Orders" value={orderCount} href="/dashboard/orders" />
         <StatCard label="Products" value={productCount} href="/dashboard/products" />
-        <StatCard label="Customers" value={customerCount} href="/dashboard" />
+        <StatCard label="Customers" value={customerCount} href="/dashboard/orders" />
       </section>
-
-      <p className="text-muted-foreground text-xs">
-        Full inbox, catalog, and order views are coming in the next dashboard phase. Suggestions
-        inbox is next on the roadmap.
-      </p>
     </div>
   )
 }

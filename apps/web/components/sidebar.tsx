@@ -2,6 +2,8 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { signOut, useSession } from "next-auth/react"
+import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 
 const links = [
@@ -13,6 +15,7 @@ const links = [
 
 export function Sidebar() {
   const pathname = usePathname()
+  const { data: session } = useSession()
 
   return (
     <aside className="border-border bg-sidebar text-sidebar-foreground hidden w-56 shrink-0 flex-col border-r md:flex">
@@ -40,6 +43,19 @@ export function Sidebar() {
           </Link>
         ))}
       </nav>
+      <div className="border-sidebar-border border-t p-3">
+        {session?.user?.name && (
+          <p className="text-muted-foreground mb-2 truncate px-1 text-xs">{session.user.name}</p>
+        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start"
+          onClick={() => signOut({ callbackUrl: "/login" })}
+        >
+          Log out
+        </Button>
+      </div>
     </aside>
   )
 }
