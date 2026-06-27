@@ -13,8 +13,6 @@ const TEXT_MESSAGE_TYPES = new Set(['chat', 'text', 'conversation']);
 
 /** Returns a short reason when the message should not be processed. */
 export function getIgnoredMessageReason(data: WebhookMessageData): string | null {
-  if (data.fromMe) return 'own_message';
-
   const chatId = data.chatId ?? data.from;
   if (!chatId) return 'missing_chat';
 

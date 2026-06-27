@@ -14,13 +14,16 @@ async function getOwnedSuggestion(
   });
 }
 
-export async function approveAndSendSuggestion(suggestionId: string): Promise<void> {
+export async function approveAndSendSuggestion(
+  suggestionId: string,
+  sessionId?: string
+): Promise<void> {
   const vendor = await getActiveVendor();
   const suggestion = await getOwnedSuggestion(suggestionId, vendor.id);
   if (!suggestion) throw new Error('Suggestion not found or already handled');
 
   await executeApprovedActions(suggestion);
-  await sendMessage(suggestion.customerPhoneNumber, suggestion.proposedReply);
+  await sendMessage(suggestion.customerPhoneNumber, suggestion.proposedReply, { sessionId });
   await logVendorReply(vendor.id, suggestion.customerPhoneNumber, suggestion.proposedReply);
 
   await prisma.suggestion.update({
@@ -55,7 +58,8 @@ export async function rejectSuggestion(suggestionId: string): Promise<void> {
 
 export async function approveWithCustomReply(
   suggestionId: string,
-  customReply: string
+  customReply: string,
+  sessionId?: string
 ): Promise<void> {
   const trimmed = customReply.trim();
   if (!trimmed) throw new Error('Reply cannot be empty');
@@ -65,7 +69,7 @@ export async function approveWithCustomReply(
   if (!suggestion) throw new Error('Suggestion not found or already handled');
 
   await executeApprovedActions(suggestion);
-  await sendMessage(suggestion.customerPhoneNumber, trimmed);
+  await sendMessage(suggestion.customerPhoneNumber, trimmed, { sessionId });
   await logVendorReply(vendor.id, suggestion.customerPhoneNumber, trimmed);
 
   await prisma.suggestion.update({

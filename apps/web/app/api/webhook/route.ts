@@ -3,9 +3,7 @@
  * Performs signature validation, body parsing, and filters for message events.
  * Identifies if the sender is the Vendor or a Customer.
  * For Vendor messages, invokes command handling.
- * For Customer messages, upserts the Customer, logs the Message,
- * handles media messages by flagging them for manual review (no emoji),
- * and enqueues jobs for AI intent extraction.
+ * For Customer messages, tries command fast-path then enqueues AI jobs.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
@@ -13,9 +11,12 @@ import { addMessageJob } from '../../../lib/queue';
 import { sendMessage } from '../../../lib/openwa';
 import { verifyWebhookSignature } from './verify';
 import { resolveWebhookVendor } from './db';
-import { handleVendorCommand } from './commands';
+import { handleVendorCommand, handleCustomerCommand, createCommandContext } from './commands';
 import { getIgnoredMessageReason, isMediaMessage } from './message-utils';
 import { phoneDigitsMatch } from '../../../lib/phone';
+import { getVendorCommands, seedDefaultCommands } from '../../../lib/commands/load';
+import { parseMessage } from '../../../lib/commands/parse';
+import { isDuplicateWebhookMessage } from './dedupe';
 
 export async function POST(req: NextRequest) {
   try {
@@ -34,13 +35,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ received: true, ignoredEvent: event });
     }
 
-    // Outbound events echo our own sends — only process inbound messages
-    if (event === 'message.sent') {
-      console.log(`[Webhook] Ignored outbound message.sent (fromMe=${data?.fromMe ?? 'unknown'})`);
-      return NextResponse.json({ received: true, ignoredEvent: event });
-    }
-
     const { id: messageId, from, body: messageContent, type } = data;
+    const replyChatId: string = data.chatId ?? from;
+    const text = messageContent ?? '';
+
+    if (isDuplicateWebhookMessage(messageId)) {
+      console.log(`[Webhook] Duplicate message ${messageId}, skipping`);
+      return NextResponse.json({ received: true, ignoredReason: 'duplicate' });
+    }
 
     const ignoredReason = getIgnoredMessageReason(data);
     if (ignoredReason) {
@@ -48,16 +50,53 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ received: true, ignoredReason });
     }
 
+    const vendor = await resolveWebhookVendor();
+    await seedDefaultCommands(vendor.id);
+    const commandCtx = await createCommandContext(replyChatId);
+
+    const vendorCommands = await getVendorCommands(vendor.id, 'VENDOR');
+    const customerCommands = await getVendorCommands(vendor.id, 'CUSTOMER');
+    const parsedVendor = parseMessage(text, vendorCommands);
+    const parsedCustomer = parseMessage(text, customerCommands);
+    const isCommand = Boolean(parsedVendor || parsedCustomer);
+
+    // Self-chat and other messages you send appear as message.sent + fromMe, not message.received.
+    if (event === 'message.sent') {
+      if (!data.fromMe) {
+        console.log(`[Webhook] Ignored outbound message.sent to ${replyChatId}`);
+        return NextResponse.json({ received: true, ignoredEvent: event });
+      }
+      if (!isCommand) {
+        console.log(`[Webhook] Ignored own message.sent (not a command): "${text}"`);
+        return NextResponse.json({ received: true, ignoredReason: 'own_message_not_command' });
+      }
+    }
+
     const isMedia = isMediaMessage(data);
 
-    const vendor = await resolveWebhookVendor();
+    // Messages sent from the linked WhatsApp account (including self-chat tests)
+    if (data.fromMe) {
+      if (parsedVendor) {
+        console.log(`[Webhook] Vendor command (fromMe/${event}): "${text}"`);
+        await handleVendorCommand(text, commandCtx);
+        return NextResponse.json({ received: true, handled: 'vendor_command' });
+      }
+      if (parsedCustomer) {
+        console.log(`[Webhook] Customer command (fromMe/self-test/${event}): "${text}"`);
+        await handleCustomerCommand(text, replyChatId, commandCtx);
+        return NextResponse.json({ received: true, handled: 'customer_command' });
+      }
+      console.log(`[Webhook] Ignored own message (not a command): "${text}"`);
+      return NextResponse.json({ received: true, ignoredReason: 'own_message_not_command' });
+    }
+
     const isFromVendor = phoneDigitsMatch(vendor.phoneNumber, from);
 
     if (isFromVendor) {
-      console.log(`[Webhook] Received vendor command: "${messageContent}"`);
-      await handleVendorCommand(messageContent);
+      console.log(`[Webhook] Received vendor command: "${text}"`);
+      await handleVendorCommand(text, commandCtx);
     } else {
-      console.log(`[Webhook] Received customer message from ${from}: "${messageContent}"`);
+      console.log(`[Webhook] Received customer message from ${from}: "${text}"`);
 
       const customer = await prisma.customer.upsert({
         where: {
@@ -77,7 +116,7 @@ export async function POST(req: NextRequest) {
       await prisma.message.create({
         data: {
           customerId: customer.id,
-          content: messageContent || `[Media type: ${type}]`,
+          content: text || `[Media type: ${type}]`,
           sender: 'CUSTOMER',
           isMedia,
         },
@@ -86,16 +125,23 @@ export async function POST(req: NextRequest) {
       if (isMedia) {
         await sendMessage(
           vendor.phoneNumber,
-          `Customer ${customer.name || from} sent media (${type}). Flagged for manual review.`
+          `Customer ${customer.name || from} sent media (${type}). Flagged for manual review.`,
+          { sessionId: commandCtx.sessionId }
         );
         return NextResponse.json({ received: true, status: 'media_flagged' });
+      }
+
+      if (parsedCustomer) {
+        console.log(`[Webhook] Customer command from ${from}: "${text}"`);
+        await handleCustomerCommand(text, replyChatId, commandCtx);
+        return NextResponse.json({ received: true, handled: 'customer_command' });
       }
 
       await addMessageJob({
         messageId,
         customerPhoneNumber: from,
         vendorPhoneNumber: vendor.phoneNumber,
-        content: messageContent,
+        content: text,
         isMedia,
       });
     }

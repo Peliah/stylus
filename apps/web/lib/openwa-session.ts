@@ -194,3 +194,22 @@ export async function registerWebhookForSession(
     return false;
   }
 }
+
+/** Register webhook URLs that are not already active on the session. */
+export async function ensureWebhooksForSession(
+  sessionId: string,
+  urls: string[],
+  secret?: string
+): Promise<void> {
+  const listResponse = await openwaSessionFetch(sessionId, '/webhooks', { method: 'GET' });
+  const existing = listResponse.ok
+    ? ((await listResponse.json()) as Array<{ url: string }>)
+    : [];
+
+  const registered = new Set(existing.map((webhook) => webhook.url));
+
+  for (const url of urls) {
+    if (registered.has(url)) continue;
+    await registerWebhookForSession(sessionId, url, secret);
+  }
+}

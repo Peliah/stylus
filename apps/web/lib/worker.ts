@@ -4,6 +4,7 @@ import { getBullMqConnection } from './redis';
 import { prisma } from './prisma';
 import { analyzeIncomingMessage } from './openai';
 import { sendMessage } from './openwa';
+import { resolveMessagingSessionId } from './messaging-session';
 import { QUEUE_NAME } from './queue';
 
 interface MessageJobData {
@@ -92,6 +93,7 @@ export const messageWorker = new Worker(
           proposedReply: aiResult.proposedReply,
           proposedActions: aiResult.proposedActions as unknown as Prisma.InputJsonValue,
           status: 'PENDING',
+          intent: aiResult.intent,
         },
       });
 
@@ -124,7 +126,8 @@ export const messageWorker = new Worker(
         `• *edit [custom text]* to send a modified message`;
 
       // 8. Forward draft options to Vendor's WhatsApp
-      const result = await sendMessage(vendorPhoneNumber, vendorNotificationText);
+      const sessionId = await resolveMessagingSessionId(vendor);
+      const result = await sendMessage(vendorPhoneNumber, vendorNotificationText, { sessionId });
       if (result.queued) {
         console.log('[Worker] Gateway down — vendor notification queued for retry.');
       }

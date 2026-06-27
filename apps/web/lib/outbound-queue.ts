@@ -7,16 +7,21 @@ export const OUTBOUND_QUEUE_NAME = 'outbound-messages';
 export interface OutboundMessageJob {
   chatId: string;
   text: string;
+  sessionId?: string;
 }
 
 export const outboundQueue = new Queue<OutboundMessageJob>(OUTBOUND_QUEUE_NAME, {
   connection: getBullMqConnection(),
 });
 
-export async function enqueueOutboundMessage(chatId: string, text: string): Promise<void> {
+export async function enqueueOutboundMessage(
+  chatId: string,
+  text: string,
+  sessionId?: string
+): Promise<void> {
   await outboundQueue.add(
     'send-text',
-    { chatId, text },
+    { chatId, text, sessionId },
     {
       attempts: 12,
       backoff: {
@@ -48,8 +53,8 @@ export async function promoteOutboundBacklog(): Promise<number> {
 export const outboundWorker = new Worker<OutboundMessageJob>(
   OUTBOUND_QUEUE_NAME,
   async (job: Job<OutboundMessageJob>) => {
-    const { chatId, text } = job.data;
-    await deliverTextMessage(chatId, text);
+    const { chatId, text, sessionId } = job.data;
+    await deliverTextMessage(chatId, text, sessionId);
     console.log(`[Outbound Queue] Delivered message to ${chatId}`);
   },
   {

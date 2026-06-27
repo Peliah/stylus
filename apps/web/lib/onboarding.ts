@@ -2,6 +2,7 @@ import { prisma } from './prisma';
 import { getGatewaySnapshotForSession } from './openwa-session';
 import { phoneDigitsMatch } from './phone';
 import { resolveVendorSessionId } from './vendor-session';
+import { seedDefaultCommands } from './commands/load';
 
 export type OnboardingStep = 'whatsapp' | 'catalog' | 'complete';
 
@@ -82,10 +83,14 @@ export async function completeOnboarding(vendorId: string) {
     throw new Error('Connect WhatsApp before finishing setup.');
   }
 
-  return prisma.vendor.update({
+  await prisma.vendor.update({
     where: { id: vendorId },
     data: { onboardingComplete: true },
   });
+
+  await seedDefaultCommands(vendorId);
+
+  return prisma.vendor.findUniqueOrThrow({ where: { id: vendorId } });
 }
 
 export async function updateVendorShopName(vendorId: string, name: string) {

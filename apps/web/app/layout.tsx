@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { Geist_Mono, Outfit, Montserrat } from "next/font/google"
 import "@workspace/ui/globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
+import { Toaster } from "@workspace/ui/components/sonner"
 import { cn } from "@workspace/ui/lib/utils"
 
 const montserratHeading = Montserrat({ subsets: ["latin"], variable: "--font-heading" })
@@ -22,7 +23,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       className={cn("antialiased", fontMono.variable, outfit.variable, montserratHeading.variable)}
     >
       <body>
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          {children}
+          <Toaster richColors closeButton position="top-right" />
+        </ThemeProvider>
       </body>
     </html>
   )

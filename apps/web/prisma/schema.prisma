@@ -20,6 +20,26 @@ enum SuggestionStatus {
   REJECTED
 }
 
+enum CommandActor {
+  CUSTOMER
+  VENDOR
+}
+
+enum CommandActionType {
+  SHOW_CATALOG
+  CHECK_STOCK
+  PLACE_ORDER
+  CHECK_ORDER_STATUS
+  CUSTOM_REPLY
+  LIST_STOCK
+  UPDATE_STOCK
+  APPROVE_SEND
+  APPROVE_ACTIONS
+  REJECT
+  APPROVE_EDIT
+  HELP
+}
+
 model Vendor {
   id                 String       @id @default(uuid())
   name               String
@@ -33,6 +53,7 @@ model Vendor {
   products     Product[]
   orders       Order[]
   suggestions  Suggestion[]
+  commands     VendorCommand[]
 }
 
 model Customer {
@@ -109,6 +130,31 @@ model Suggestion {
   proposedReply       String
   proposedActions     Json             // e.g. { type: "CREATE_ORDER", items: [{ sku: "x", qty: 2 }] }
   status              SuggestionStatus @default(PENDING)
+  intent              String?
+  actionType          CommandActionType?
+  vendorCommandId     String?
+  vendorCommand       VendorCommand?   @relation(fields: [vendorCommandId], references: [id])
+  triggerMessageId    String?
   createdAt           DateTime         @default(now())
   updatedAt           DateTime         @updatedAt
+}
+
+model VendorCommand {
+  id            String            @id @default(uuid())
+  vendorId      String
+  vendor        Vendor            @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  keyword       String
+  actor         CommandActor
+  actionType    CommandActionType
+  label         String
+  description   String?
+  replyTemplate String?
+  enabled       Boolean           @default(true)
+  sortOrder     Int               @default(0)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  suggestions   Suggestion[]
+
+  @@unique([vendorId, keyword])
+  @@index([vendorId, actor, enabled])
 }

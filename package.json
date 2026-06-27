@@ -17,6 +17,7 @@
     "smoke:test": "node scripts/smoke-test.mjs",
     "openwa:sync-key": "node scripts/sync-openwa-key.mjs",
     "openwa:register-webhook": "node scripts/openwa-register-webhook.mjs",
+    "openwa:test-self-chat": "node scripts/test-self-chat-webhook.mjs",
     "openwa:start": "node scripts/openwa-start.mjs"
   },
   "devDependencies": {

@@ -1,7 +1,7 @@
 import { getServerSession } from 'next-auth';
 import { prisma } from './prisma';
 import { authOptions } from './auth';
-import { getGatewaySnapshot } from './openwa-client';
+import { getGatewaySnapshotForSession } from './openwa-session';
 import { phoneDigitsMatch } from './phone';
 
 export const VENDOR_PHONE_NUMBER = process.env.VENDOR_PHONE_NUMBER || '';
@@ -38,13 +38,20 @@ export async function getActiveVendor() {
 
 /** Resolve vendor for inbound webhooks from connected gateway phone. */
 export async function resolveWebhookVendor() {
-  const gateway = await getGatewaySnapshot();
-  if (gateway.phone) {
-    const vendors = await prisma.vendor.findMany({
-      where: { whatsappLinkedAt: { not: null } },
-    });
-    const match = vendors.find((v) => phoneDigitsMatch(v.phoneNumber, gateway.phone!));
-    if (match) return match;
+  const linkedVendors = await prisma.vendor.findMany({
+    where: { whatsappLinkedAt: { not: null } },
+  });
+
+  for (const vendor of linkedVendors) {
+    if (!vendor.openwaSessionId) continue;
+    const gateway = await getGatewaySnapshotForSession(vendor.openwaSessionId);
+    if (
+      gateway.state === 'connected' &&
+      gateway.phone &&
+      phoneDigitsMatch(vendor.phoneNumber, gateway.phone)
+    ) {
+      return vendor;
+    }
   }
 
   if (VENDOR_PHONE_NUMBER) {

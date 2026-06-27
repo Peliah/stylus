@@ -27,16 +27,12 @@ for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
 
 const base = process.env.OPENWA_API_URL || 'http://localhost:2785';
 const apiKey = process.env.OPENWA_API_KEY || '';
-const session = process.env.OPENWA_SESSION_ID || 'default';
-const webhookUrl = process.env.WEBHOOK_URL || '';
+const vendorPhone = (process.env.VENDOR_PHONE_NUMBER || '').replace(/@.*$/, '').replace(/\D/g, '');
+const tunnelUrl = process.env.WEBHOOK_URL || '';
 const secret = process.env.WEBHOOK_SECRET || '';
 
 if (!apiKey) {
   console.error('Missing OPENWA_API_KEY in .env — run: pnpm openwa:sync-key');
-  process.exit(1);
-}
-if (!webhookUrl) {
-  console.error('Missing WEBHOOK_URL in .env');
   process.exit(1);
 }
 
@@ -61,30 +57,57 @@ async function api(method, urlPath, body) {
   return { status: res.status, json };
 }
 
-console.log(`Registering webhook for session: ${session}`);
-console.log(`URL: ${webhookUrl}`);
+function phoneMatch(stored, gateway) {
+  const a = stored.replace(/\D/g, '');
+  const b = gateway.replace(/\D/g, '');
+  return a === b || a.endsWith(b) || b.endsWith(a);
+}
 
-// Remove existing webhooks for this URL (avoid duplicates)
-const list = await api('GET', `/api/sessions/${session}/webhooks`);
+const sessionsRes = await api('GET', '/api/sessions');
+const sessions = Array.isArray(sessionsRes.json) ? sessionsRes.json : [];
+
+let session = sessions.find(
+  (s) =>
+    (s.status === 'ready' || s.status === 'connected') &&
+    s.phone &&
+    vendorPhone &&
+    phoneMatch(vendorPhone, s.phone)
+);
+
+if (!session && process.env.OPENWA_SESSION_ID) {
+  session = sessions.find((s) => s.id === process.env.OPENWA_SESSION_ID);
+}
+
+if (!session) {
+  console.error('No connected OpenWA session found for vendor phone. Scan QR first.');
+  process.exit(1);
+}
+
+const urls = tunnelUrl ? [tunnelUrl] : [];
+
+console.log(`Registering webhooks on session: ${session.id} (${session.name})`);
+console.log(`Phone: +${session.phone}`);
+
+const list = await api('GET', `/api/sessions/${session.id}/webhooks`);
 const existing = Array.isArray(list.json) ? list.json : list.json?.data || [];
-for (const wh of existing) {
-  if (wh.url === webhookUrl) {
-    console.log(`Removing existing webhook ${wh.id}...`);
-    await api('DELETE', `/api/sessions/${session}/webhooks/${wh.id}`);
+const registered = new Set(existing.map((wh) => wh.url));
+
+for (const url of urls) {
+  if (registered.has(url)) {
+    console.log(`✓ Already registered: ${url}`);
+    continue;
+  }
+  const body = {
+    url,
+    events: ['message.received', 'message.sent'],
+    ...(secret ? { secret } : {}),
+  };
+  const created = await api('POST', `/api/sessions/${session.id}/webhooks`, body);
+  if (created.status >= 200 && created.status < 300) {
+    console.log(`✅ Registered: ${url}`);
+  } else {
+    console.error(`❌ Failed ${url}:`, created.status, JSON.stringify(created.json));
   }
 }
 
-const body = {
-  url: webhookUrl,
-  events: ['message.received', 'message.sent'],
-  ...(secret ? { secret } : {}),
-};
-
-const created = await api('POST', `/api/sessions/${session}/webhooks`, body);
-if (created.status >= 200 && created.status < 300) {
-  console.log('✅ Webhook registered with secret from .env WEBHOOK_SECRET');
-  console.log('   Restart pnpm dev, then test again in OpenWA dashboard.');
-} else {
-  console.error('❌ Failed:', created.status, JSON.stringify(created.json));
-  process.exit(1);
-}
+console.log('\nRestart pnpm dev, then test self-chat commands: stock, /menu, /help');

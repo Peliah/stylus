@@ -1,14 +1,25 @@
-import { Sidebar } from "@/components/sidebar"
-import { GatewayStatusBanner } from "@/components/gateway-status-banner"
+import { prisma } from "@/lib/prisma"
+import { getActiveVendor } from "@/lib/vendor"
+import { LOW_STOCK_THRESHOLD } from "@/lib/inventory"
+import { DashboardShell } from "@/components/dashboard/dashboard-shell"
 
-export default function MainDashboardLayout({ children }: { children: React.ReactNode }) {
+export default async function MainDashboardLayout({ children }: { children: React.ReactNode }) {
+  const vendor = await getActiveVendor()
+
+  const [pendingSuggestions, lowStockCount] = await Promise.all([
+    prisma.suggestion.count({ where: { vendorId: vendor.id, status: "PENDING" } }),
+    prisma.product.count({
+      where: { vendorId: vendor.id, stock: { lte: LOW_STOCK_THRESHOLD } },
+    }),
+  ])
+
   return (
-    <div className="flex h-svh overflow-hidden bg-background">
-      <Sidebar />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <GatewayStatusBanner />
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
-      </div>
-    </div>
+    <DashboardShell
+      vendorName={vendor.name}
+      pendingSuggestions={pendingSuggestions}
+      lowStockCount={lowStockCount}
+    >
+      {children}
+    </DashboardShell>
   )
 }
