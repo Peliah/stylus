@@ -2,6 +2,9 @@ import {
   type GatewaySnapshot,
   normalizeGatewayStatus,
 } from './gateway';
+import { getGatewaySnapshotForSession } from './openwa-session';
+import { phoneDigitsMatch } from './phone';
+import { getVendorSelfChatId } from './vendor-chat-id';
 
 const OPENWA_API_URL = process.env.OPENWA_API_URL || 'http://localhost:2785';
 const OPENWA_API_KEY = process.env.OPENWA_API_KEY || 'openwa_secure_token';
@@ -69,6 +72,16 @@ export async function resolveWhatsAppChatId(
   }
 
   const sid = resolveSessionId(sessionId);
+
+  const cached = await getVendorSelfChatId(phoneInput);
+  if (cached) return cached;
+
+  // Sending to the connected account's own number (login OTP, self-chat)
+  const snapshot = await getGatewaySnapshotForSession(sid);
+  if (snapshot.phone && phoneDigitsMatch(phoneInput, snapshot.phone)) {
+    return phoneInput.includes('@') ? phoneInput : `${digits}@c.us`;
+  }
+
   const url = `${OPENWA_API_URL}/api/sessions/${sid}/contacts/check/${digits}`;
   const response = await fetch(url, {
     method: 'GET',
@@ -90,35 +103,80 @@ export async function resolveWhatsAppChatId(
   return chatId;
 }
 
+async function isSelfChatTarget(phoneInput: string, sessionId?: string): Promise<boolean> {
+  const snapshot = await getGatewaySnapshotForSession(resolveSessionId(sessionId));
+  return Boolean(snapshot.phone && phoneDigitsMatch(phoneInput, snapshot.phone));
+}
+
+async function buildChatIdCandidates(
+  phoneInput: string,
+  sessionId?: string
+): Promise<string[]> {
+  const digits = phoneInput.replace(/@.*$/, '').replace(/\D/g, '');
+  const candidates: string[] = [];
+
+  const cachedSelf = await getVendorSelfChatId(phoneInput);
+  if (cachedSelf) candidates.push(cachedSelf);
+
+  if (phoneInput.includes('@')) {
+    candidates.push(phoneInput);
+  } else if (digits) {
+    candidates.push(`${digits}@c.us`);
+  }
+
+  if (await isSelfChatTarget(phoneInput, sessionId)) {
+    // Self-chat @c.us is tried above; contact lookup usually fails for own number.
+  } else {
+    try {
+      const resolved = await resolveWhatsAppChatId(phoneInput, sessionId);
+      candidates.unshift(resolved);
+    } catch {
+      // Fall back to raw chat ids below.
+    }
+  }
+
+  return [...new Set(candidates.filter(Boolean))];
+}
+
 /**
  * Sends immediately via OpenWA — throws on failure.
- * Resolves @c.us ids to the canonical WhatsApp chat id before sending.
+ * Tries multiple chat id formats when delivery fails (common for self-chat / @lid).
  */
 export async function deliverTextMessage(
   chatId: string,
   text: string,
   sessionId?: string
 ): Promise<void> {
-  const targetChatId =
-    chatId.includes('@lid') || !chatId.endsWith('@c.us')
-      ? chatId
-      : await resolveWhatsAppChatId(chatId, sessionId);
+  const candidates = await buildChatIdCandidates(chatId, sessionId);
+  let lastError: Error | null = null;
 
-  try {
-    await openwaRequest({
-      method: 'POST',
-      path: '/messages/send-text',
-      body: { chatId: targetChatId, text },
-      sessionId,
-    });
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('[500]')) {
-      throw new Error(
-        'WhatsApp could not deliver to this number. Check the number and try again.'
-      );
+  for (const targetChatId of candidates) {
+    try {
+      await openwaRequest({
+        method: 'POST',
+        path: '/messages/send-text',
+        body: { chatId: targetChatId, text },
+        sessionId,
+      });
+      return;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error('Failed to send message');
     }
-    throw error;
   }
+
+  if (lastError?.message.includes('[500]') && (await isSelfChatTarget(chatId, sessionId))) {
+    throw new Error(
+      'Could not deliver to your WhatsApp self-chat. Open the chat with yourself in WhatsApp, send any message, then tap Resend code.'
+    );
+  }
+
+  if (lastError?.message.includes('[500]')) {
+    throw new Error(
+      'WhatsApp could not deliver to this number. Check the number and try again.'
+    );
+  }
+
+  throw lastError ?? new Error('Failed to send WhatsApp message');
 }
 
 /**

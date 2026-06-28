@@ -4,7 +4,28 @@ import { authOptions } from './auth';
 import { getGatewaySnapshotForSession } from './openwa-session';
 import { phoneDigitsMatch } from './phone';
 
+const OPENWA_API_URL = process.env.OPENWA_API_URL || 'http://localhost:2785';
+const OPENWA_API_KEY = process.env.OPENWA_API_KEY || 'openwa_secure_token';
+
 export const VENDOR_PHONE_NUMBER = process.env.VENDOR_PHONE_NUMBER || '';
+
+interface OpenWASessionSummary {
+  id: string;
+  status?: string;
+  phone?: string | null;
+}
+
+async function listGatewaySessions(): Promise<OpenWASessionSummary[]> {
+  const response = await fetch(`${OPENWA_API_URL}/api/sessions`, {
+    headers: { 'X-API-Key': OPENWA_API_KEY },
+  });
+  if (!response.ok) return [];
+  return (await response.json()) as OpenWASessionSummary[];
+}
+
+function isActiveSession(status?: string): boolean {
+  return status === 'ready' || status === 'connected';
+}
 
 export async function getOrCreateDefaultVendor() {
   let vendor = await prisma.vendor.findFirst({
@@ -36,11 +57,29 @@ export async function getActiveVendor() {
   return getOrCreateDefaultVendor();
 }
 
-/** Resolve vendor for inbound webhooks from connected gateway phone. */
+/** Resolve vendor for inbound webhooks from the connected gateway phone. */
 export async function resolveWebhookVendor() {
   const linkedVendors = await prisma.vendor.findMany({
     where: { whatsappLinkedAt: { not: null } },
   });
+
+  const sessions = await listGatewaySessions();
+  for (const session of sessions) {
+    if (!isActiveSession(session.status) || !session.phone) continue;
+
+    const match = linkedVendors.find((vendor) =>
+      phoneDigitsMatch(vendor.phoneNumber, session.phone!)
+    );
+    if (match) {
+      if (match.openwaSessionId !== session.id) {
+        await prisma.vendor.update({
+          where: { id: match.id },
+          data: { openwaSessionId: session.id },
+        });
+      }
+      return match;
+    }
+  }
 
   for (const vendor of linkedVendors) {
     if (!vendor.openwaSessionId) continue;

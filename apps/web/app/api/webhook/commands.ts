@@ -3,38 +3,45 @@
  */
 import { prisma } from '../../../lib/prisma';
 import { sendMessage } from '../../../lib/openwa';
+import { enqueueOutboundMessage } from '../../../lib/outbound-queue';
 import { getVendorCommands } from '../../../lib/commands/load';
 import { parseMessage } from '../../../lib/commands/parse';
 import { formatCatalog, formatHelpMessage, renderTemplate } from '../../../lib/commands/templates';
 import { resolveMessagingSessionId } from '../../../lib/messaging-session';
+import { whatsAppPhoneVariants } from '../../../lib/phone';
 import {
   approveActionsOnly,
   approveAndSendSuggestion,
   approveWithCustomReply,
   rejectSuggestion,
 } from '../../../lib/suggestion-actions';
-import { resolveWebhookVendor } from './db';
 
 export interface CommandContext {
   sessionId: string;
+  vendorId: string;
   replyChatId?: string;
 }
 
-export async function createCommandContext(replyChatId?: string): Promise<CommandContext> {
-  const vendor = await resolveWebhookVendor();
+export async function createCommandContext(
+  vendor: { id: string; phoneNumber: string; openwaSessionId: string | null },
+  replyChatId?: string
+): Promise<CommandContext> {
   const sessionId = await resolveMessagingSessionId(vendor);
-  return { sessionId, replyChatId };
+  return { sessionId, vendorId: vendor.id, replyChatId };
 }
 
 async function reply(chatId: string, text: string, ctx: CommandContext) {
   const result = await sendMessage(chatId, text, { sessionId: ctx.sessionId });
   if (!result.success && !result.queued) {
-    console.error(`[Commands] Failed to deliver reply to ${chatId}`);
+    console.error(`[Commands] Failed to deliver reply to ${chatId}, queueing retry`);
+    await enqueueOutboundMessage(chatId, text, ctx.sessionId);
+  } else if (result.queued) {
+    console.log(`[Commands] Reply to ${chatId} queued for retry`);
   }
 }
 
 export async function handleVendorCommand(commandText: string, ctx: CommandContext) {
-  const vendor = await resolveWebhookVendor();
+  const vendor = await prisma.vendor.findUniqueOrThrow({ where: { id: ctx.vendorId } });
   const replyTo = ctx.replyChatId ?? vendor.phoneNumber;
   const commands = await getVendorCommands(vendor.id, 'VENDOR');
   const parsed = parseMessage(commandText, commands);
@@ -156,7 +163,7 @@ export async function handleCustomerCommand(
   replyChatId: string,
   ctx: CommandContext
 ) {
-  const vendor = await resolveWebhookVendor();
+  const vendor = await prisma.vendor.findUniqueOrThrow({ where: { id: ctx.vendorId } });
   const commands = await getVendorCommands(vendor.id, 'CUSTOMER');
   const parsed = parseMessage(commandText, commands);
 
@@ -168,8 +175,12 @@ export async function handleCustomerCommand(
     orderBy: { name: 'asc' },
   });
 
+  const variants = whatsAppPhoneVariants(replyChatId);
   const customer = await prisma.customer.findFirst({
-    where: { vendorId: vendor.id, phoneNumber: replyChatId },
+    where: {
+      vendorId: vendor.id,
+      phoneNumber: { in: variants.length ? variants : [replyChatId] },
+    },
   });
 
   const customerName = customer?.name ?? 'there';
@@ -254,6 +265,8 @@ export async function handleCustomerCommand(
           sender: 'VENDOR',
         },
       });
+    } else {
+      console.warn(`[Commands] Reply sent to ${replyChatId} but no customer record matched`);
     }
 
     return true;

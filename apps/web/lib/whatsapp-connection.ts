@@ -1,6 +1,7 @@
 import { prisma } from './prisma';
 import type { GatewaySnapshot } from './gateway';
 import { normalizeWhatsAppPhone, phoneDigitsMatch, whatsAppPhoneVariants } from './phone';
+import { resolveMessagingSessionId } from './messaging-session';
 import {
   ensureOpenwaSession,
   getGatewaySnapshotForSession,
@@ -9,11 +10,28 @@ import {
   startOpenwaSession,
 } from './openwa-session';
 
+async function syncVendorSessionId(vendorId: string, sessionId: string, current: string | null) {
+  if (current !== sessionId) {
+    await prisma.vendor.update({
+      where: { id: vendorId },
+      data: { openwaSessionId: sessionId },
+    });
+  }
+}
+
 export async function getVendorConnectionStatus(vendor: {
+  id: string;
   phoneNumber: string;
   openwaSessionId: string | null;
-}): Promise<{ gateway: GatewaySnapshot; connected: boolean }> {
-  if (!vendor.openwaSessionId) {
+}): Promise<{ gateway: GatewaySnapshot; connected: boolean; sessionId: string | null }> {
+  let sessionId: string | null = null;
+  try {
+    sessionId = await resolveMessagingSessionId(vendor);
+  } catch {
+    sessionId = vendor.openwaSessionId;
+  }
+
+  if (!sessionId) {
     return {
       gateway: {
         sessionId: '',
@@ -24,16 +42,17 @@ export async function getVendorConnectionStatus(vendor: {
         lastError: null,
       },
       connected: false,
+      sessionId: null,
     };
   }
 
-  const gateway = await getGatewaySnapshotForSession(vendor.openwaSessionId);
+  const gateway = await getGatewaySnapshotForSession(sessionId);
   const connected =
     gateway.state === 'connected' &&
     gateway.phone !== null &&
     phoneDigitsMatch(vendor.phoneNumber, gateway.phone);
 
-  return { gateway, connected };
+  return { gateway, connected, sessionId };
 }
 
 export async function prepareVendorWhatsApp(phoneInput: string) {
@@ -47,16 +66,16 @@ export async function prepareVendorWhatsApp(phoneInput: string) {
   }
 
   const existingSessionId = vendor.openwaSessionId ?? null;
-  const sessionName = `stylus-vendor-${vendor.id}`;
-  const sessionId = await ensureOpenwaSession(existingSessionId, sessionName);
-  await startOpenwaSession(sessionId);
-
-  if (vendor.openwaSessionId !== sessionId) {
-    await prisma.vendor.update({
-      where: { id: vendor.id },
-      data: { openwaSessionId: sessionId },
-    });
+  let sessionId: string;
+  try {
+    sessionId = await resolveMessagingSessionId(vendor);
+  } catch {
+    const sessionName = `stylus-vendor-${vendor.id}`;
+    sessionId = await ensureOpenwaSession(existingSessionId, sessionName);
   }
+
+  await startOpenwaSession(sessionId);
+  await syncVendorSessionId(vendor.id, sessionId, vendor.openwaSessionId);
 
   const webhookUrl = process.env.WEBHOOK_URL;
   const webhookSecret = process.env.WEBHOOK_SECRET;
@@ -88,24 +107,10 @@ export async function getVendorWhatsAppStatus(phoneInput: string) {
     return { exists: false as const, connected: false };
   }
 
-  if (!vendor.openwaSessionId) {
-    return {
-      exists: true as const,
-      connected: false,
-      phone: vendor.phoneNumber,
-      gateway: {
-        state: 'disconnected' as const,
-        phone: null,
-        pushName: null,
-      },
-    };
+  const { gateway, connected, sessionId } = await getVendorConnectionStatus(vendor);
+  if (sessionId && sessionId !== vendor.openwaSessionId) {
+    await syncVendorSessionId(vendor.id, sessionId, vendor.openwaSessionId);
   }
-
-  const gateway = await getGatewaySnapshotForSession(vendor.openwaSessionId);
-  const connected =
-    gateway.state === 'connected' &&
-    gateway.phone !== null &&
-    phoneDigitsMatch(vendor.phoneNumber, gateway.phone);
 
   return {
     exists: true as const,

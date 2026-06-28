@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sendLoginOtp } from '@/lib/auth-otp';
 import { prisma } from '@/lib/prisma';
+import { resolveMessagingSessionId } from '@/lib/messaging-session';
 import { normalizeWhatsAppPhone, whatsAppPhoneVariants } from '@/lib/phone';
 import { getVendorWhatsAppStatus } from '@/lib/whatsapp-connection';
 import { toVendorError } from '@/lib/vendor-errors';
@@ -45,9 +46,15 @@ export async function POST(req: Request) {
       );
     }
 
-    const result = await sendLoginOtp(body.phone, {
-      sessionId: vendor.openwaSessionId ?? undefined,
-    });
+    const sessionId = await resolveMessagingSessionId(vendor);
+    if (sessionId !== vendor.openwaSessionId) {
+      await prisma.vendor.update({
+        where: { id: vendor.id },
+        data: { openwaSessionId: sessionId },
+      });
+    }
+
+    const result = await sendLoginOtp(body.phone, { sessionId });
     return NextResponse.json({
       ok: true,
       phone: result.phone,

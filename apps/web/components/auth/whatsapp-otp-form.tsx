@@ -75,6 +75,15 @@ export function WhatsAppOtpForm() {
       const isConnected = await checkConnection(phone)
       if (isConnected) {
         setStep("code")
+        const linked = await signIn("whatsapp-linked", {
+          phone,
+          redirect: false,
+          callbackUrl: "/dashboard",
+        })
+        if (!linked?.error) {
+          window.location.href = "/dashboard"
+          return
+        }
         await sendOtp(phone)
       } else {
         await fetchQr(phone)
@@ -102,6 +111,15 @@ export function WhatsAppOtpForm() {
       }
 
       if (prepData.connected) {
+        const linked = await signIn("whatsapp-linked", {
+          phone,
+          redirect: false,
+          callbackUrl: "/dashboard",
+        })
+        if (!linked?.error) {
+          window.location.href = "/dashboard"
+          return
+        }
         const ok = await sendOtp(phone)
         if (ok) setStep("code")
       } else {

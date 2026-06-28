@@ -4,9 +4,37 @@ import { verifyLoginOtp } from './auth-otp';
 import { prisma } from './prisma';
 import { getPendingSetup } from './setup-session';
 import { consumeSetup } from './setup-service';
+import { getVendorWhatsAppStatus } from './whatsapp-connection';
+import { normalizeWhatsAppPhone, whatsAppPhoneVariants } from './phone';
 
 export const authOptions: NextAuthOptions = {
   providers: [
+    CredentialsProvider({
+      id: 'whatsapp-linked',
+      name: 'WhatsApp Linked',
+      credentials: {
+        phone: { label: 'Phone', type: 'text' },
+      },
+      async authorize(credentials) {
+        if (!credentials?.phone) return null;
+
+        const phone = normalizeWhatsAppPhone(credentials.phone);
+        const variants = whatsAppPhoneVariants(credentials.phone);
+        const vendor = await prisma.vendor.findFirst({
+          where: { phoneNumber: { in: variants.length ? variants : [phone] } },
+        });
+        if (!vendor) return null;
+
+        const status = await getVendorWhatsAppStatus(credentials.phone);
+        if (!status.connected) return null;
+
+        return {
+          id: vendor.id,
+          name: vendor.name,
+          phone: vendor.phoneNumber,
+        };
+      },
+    }),
     CredentialsProvider({
       id: 'whatsapp-otp',
       name: 'WhatsApp OTP',

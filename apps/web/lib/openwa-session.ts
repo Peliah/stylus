@@ -82,12 +82,20 @@ export async function ensureOpenwaSession(
   return data.id;
 }
 
+function isSessionAlreadyStarted(response: Response, body: string): boolean {
+  if (response.status === 409) return true;
+  if (response.status !== 400) return false;
+  return body.toLowerCase().includes('already started');
+}
+
 export async function startOpenwaSession(sessionId: string): Promise<void> {
   const response = await openwaSessionFetch(sessionId, '/start', { method: 'POST' });
-  if (!response.ok && response.status !== 409) {
-    const text = await response.text();
-    throw new Error(`Failed to start OpenWA session: ${text}`);
-  }
+  if (response.ok) return;
+
+  const text = await response.text();
+  if (isSessionAlreadyStarted(response, text)) return;
+
+  throw new Error(`Failed to start OpenWA session: ${text}`);
 }
 
 export interface SessionQrResult {

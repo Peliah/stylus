@@ -12,19 +12,12 @@ interface OpenWASessionSummary {
 
 /**
  * Finds the connected OpenWA session for a vendor phone.
- * Prefers the vendor's stored session id, then scans active gateway sessions.
+ * Prefers an active gateway session matching the phone, then the stored session id.
  */
 export async function resolveMessagingSessionId(vendor: {
   phoneNumber: string;
   openwaSessionId: string | null;
 }): Promise<string> {
-  if (vendor.openwaSessionId) {
-    const snapshot = await getGatewaySnapshotForSession(vendor.openwaSessionId);
-    if (snapshot.state === 'connected') {
-      return vendor.openwaSessionId;
-    }
-  }
-
   const response = await fetch(`${OPENWA_API_URL}/api/sessions`, {
     headers: { 'X-API-Key': OPENWA_API_KEY },
   });
@@ -38,6 +31,13 @@ export async function resolveMessagingSessionId(vendor: {
         phoneDigitsMatch(vendor.phoneNumber, session.phone)
     );
     if (match) return match.id;
+  }
+
+  if (vendor.openwaSessionId) {
+    const snapshot = await getGatewaySnapshotForSession(vendor.openwaSessionId);
+    if (snapshot.state === 'connected') {
+      return vendor.openwaSessionId;
+    }
   }
 
   if (vendor.openwaSessionId) {

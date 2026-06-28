@@ -17,6 +17,7 @@ import { phoneDigitsMatch } from '../../../lib/phone';
 import { getVendorCommands, seedDefaultCommands } from '../../../lib/commands/load';
 import { parseMessage } from '../../../lib/commands/parse';
 import { isDuplicateWebhookMessage } from './dedupe';
+import { saveVendorSelfChatId } from '../../../lib/vendor-chat-id';
 
 export async function POST(req: NextRequest) {
   try {
@@ -52,7 +53,12 @@ export async function POST(req: NextRequest) {
 
     const vendor = await resolveWebhookVendor();
     await seedDefaultCommands(vendor.id);
-    const commandCtx = await createCommandContext(replyChatId);
+    const customerReplyId = from ?? replyChatId;
+    const commandCtx = await createCommandContext(vendor, customerReplyId);
+
+    if (data.fromMe && replyChatId) {
+      await saveVendorSelfChatId(vendor.phoneNumber, replyChatId);
+    }
 
     const vendorCommands = await getVendorCommands(vendor.id, 'VENDOR');
     const customerCommands = await getVendorCommands(vendor.id, 'CUSTOMER');
@@ -98,17 +104,18 @@ export async function POST(req: NextRequest) {
     } else {
       console.log(`[Webhook] Received customer message from ${from}: "${text}"`);
 
+      const customerPhone = from ?? replyChatId;
       const customer = await prisma.customer.upsert({
         where: {
           vendorId_phoneNumber: {
             vendorId: vendor.id,
-            phoneNumber: from,
+            phoneNumber: customerPhone,
           },
         },
         update: {},
         create: {
           vendorId: vendor.id,
-          phoneNumber: from,
+          phoneNumber: customerPhone,
           name: data.sender?.pushname || null,
         },
       });
@@ -132,14 +139,16 @@ export async function POST(req: NextRequest) {
       }
 
       if (parsedCustomer) {
-        console.log(`[Webhook] Customer command from ${from}: "${text}"`);
-        await handleCustomerCommand(text, replyChatId, commandCtx);
+        console.log(
+          `[Webhook] Customer command from ${customerPhone}: "${text}" → vendor ${vendor.id} session ${commandCtx.sessionId}`
+        );
+        await handleCustomerCommand(text, customerReplyId, commandCtx);
         return NextResponse.json({ received: true, handled: 'customer_command' });
       }
 
       await addMessageJob({
         messageId,
-        customerPhoneNumber: from,
+        customerPhoneNumber: from ?? replyChatId,
         vendorPhoneNumber: vendor.phoneNumber,
         content: text,
         isMedia,
