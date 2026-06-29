@@ -27,6 +27,7 @@ RUN pnpm --filter web exec prisma generate
 
 # Build the workspace
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV CI=true
 RUN pnpm build
 
 # Clean up dev dependencies to keep production image smaller
