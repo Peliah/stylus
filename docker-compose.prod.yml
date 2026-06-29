@@ -87,6 +87,8 @@ services:
       - web
     networks:
       - crm-network
+    environment:
+      - DOMAIN_NAME=${DOMAIN_NAME}
 
 volumes:
   postgres_prod_data:
