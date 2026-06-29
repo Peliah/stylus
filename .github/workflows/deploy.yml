@@ -1,0 +1,65 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main  # Change to master if your default branch is master
+
+jobs:
+  validate:
+    name: Lint & Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 10
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma Client
+        run: pnpm db:generate
+
+      - name: Run Lint
+        run: pnpm lint
+
+      - name: Run Typecheck
+        run: pnpm typecheck
+
+  deploy:
+    name: Deploy to GCP VM
+    needs: validate
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'  # Only deploy on main branch pushes
+    steps:
+      - name: Execute Remote SSH Commands
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.GCP_VM_IP }}
+          username: ${{ secrets.GCP_SSH_USER }}
+          key: ${{ secrets.GCP_SSH_PRIVATE_KEY }}
+          port: 22
+          script: |
+            # 1. Navigate to the application repository directory
+            cd ~/stylus
+            
+            # 2. Pull the latest code changes
+            git pull origin main
+            
+            # 3. Build and restart containers (recreates next-prod container with new code)
+            docker compose -f docker-compose.prod.yml up -d --build
+            
+            # 4. Run Prisma database migrations inside the running container
+            docker compose -f docker-compose.prod.yml exec -T web pnpm --filter web exec prisma migrate deploy
+            
+            # 5. Clean up unused old Docker builder cache/images to save VM disk space
+            docker image prune -f
