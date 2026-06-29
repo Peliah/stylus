@@ -30,8 +30,6 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV CI=true
 RUN pnpm build
 
-# Clean up dev dependencies to keep production image smaller
-RUN pnpm prune --prod --no-optional
 
 # 2. Runner stage
 FROM base AS runner
