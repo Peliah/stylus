@@ -1,0 +1,100 @@
+version: '3.8'
+
+services:
+  # 1. PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: crm-postgres-prod
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER:-crm_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-crm_password}
+      POSTGRES_DB: ${DB_NAME:-crm_db}
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+    networks:
+      - crm-network
+
+  # 2. Redis for BullMQ Queue
+  redis:
+    image: redis:7-alpine
+    container_name: crm-redis-prod
+    restart: always
+    volumes:
+      - redis_prod_data:/data
+    networks:
+      - crm-network
+
+  # 3. OpenWA WhatsApp API Gateway
+  openwa:
+    image: ghcr.io/rmyndharis/openwa:latest
+    container_name: crm-openwa-prod
+    restart: always
+    environment:
+      - ALLOW_DEV_API_KEY=true
+      - API_KEY=${OPENWA_API_KEY:-openwa_secure_token}
+      - DB_TYPE=sqlite
+      - PORT=2785
+    volumes:
+      - openwa_prod_sessions:/app/sessions
+    depends_on:
+      - redis
+    networks:
+      - crm-network
+
+  # 4. Next.js Web App + Workers
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: crm-next-prod
+    restart: always
+    depends_on:
+      - db
+      - redis
+      - openwa
+    environment:
+      - DATABASE_URL=postgresql://${DB_USER:-crm_user}:${DB_PASSWORD:-crm_password}@db:5432/${DB_NAME:-crm_db}?schema=public
+      - REDIS_URL=redis://redis:6379
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL}
+      - OPENAI_MODEL=${OPENAI_MODEL}
+      - OPENWA_API_URL=http://openwa:2785
+      - OPENWA_API_KEY=${OPENWA_API_KEY:-openwa_secure_token}
+      - OPENWA_SESSION_ID=${OPENWA_SESSION_ID:-default}
+      - VENDOR_PHONE_NUMBER=${VENDOR_PHONE_NUMBER}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - NEXTAUTH_URL=${NEXTAUTH_URL}
+      - WEBHOOK_URL=${WEBHOOK_URL}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
+    networks:
+      - crm-network
+
+  # 5. Caddy Reverse Proxy (HTTPS / SSL Management)
+  caddy:
+    image: caddy:2-alpine
+    container_name: crm-caddy
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+    networks:
+      - crm-network
+
+volumes:
+  postgres_prod_data:
+  redis_prod_data:
+  openwa_prod_sessions:
+  caddy_data:
+  caddy_config:
+
+networks:
+  crm-network:
+    driver: bridge
